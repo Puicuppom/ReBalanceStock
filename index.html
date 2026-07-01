@@ -144,114 +144,97 @@
             padding: 10px 14px calc(80px + var(--safe-b));
         }
 
-        /* ── Asset row (compact) ── */
+        /* ── Rebalance summary ── */
+        .rebalance-summary {
+            flex-shrink: 0;
+            padding: 0 14px 8px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .rebalance-summary.hidden { display: none; }
+        .rebalance-box {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .rebalance-box .buy-line { color: var(--green); font-weight: 600; }
+        .rebalance-box .sell-line { color: var(--red); font-weight: 600; }
+        .rebalance-box .hold-line { color: var(--muted); }
+
+        /* ── Asset row — single line ── */
         .asset-row {
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr) 68px 44px minmax(72px, auto) 28px;
+            align-items: center;
+            gap: 6px;
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             margin-bottom: 8px;
-            overflow: hidden;
-        }
-        .asset-top {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 12px;
-            cursor: pointer;
-            user-select: none;
+            padding: 8px 10px;
         }
         .asset-badge {
-            flex-shrink: 0;
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
+            width: 38px;
+            height: 38px;
+            border-radius: 9px;
             background: var(--primary);
             color: #fff;
-            font-size: 11px;
+            font-size: 9px;
             font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: center;
             letter-spacing: -0.5px;
         }
-        .asset-info { flex: 1; min-width: 0; }
+        .asset-info { min-width: 0; }
         .asset-name {
             font-weight: 700;
-            font-size: 14px;
-            line-height: 1.2;
+            font-size: 13px;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .asset-meta {
-            font-size: 11px;
+            font-size: 10px;
             color: var(--muted);
-            margin-top: 2px;
+            white-space: nowrap;
         }
+        .asset-input {
+            width: 100%;
+            padding: 7px 4px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            font-size: 13px;
+            text-align: center;
+            -webkit-appearance: none;
+            appearance: none;
+            min-width: 0;
+        }
+        .asset-input.pct { padding-right: 2px; }
         .asset-action {
-            flex-shrink: 0;
             text-align: right;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
-            max-width: 110px;
-            line-height: 1.3;
+            line-height: 1.2;
+            white-space: nowrap;
         }
         .buy { color: var(--green); }
         .sell { color: var(--red); }
-        .hold { color: var(--muted); }
-
-        .chevron {
-            flex-shrink: 0;
-            width: 16px;
-            height: 16px;
-            transition: transform 0.2s;
-            opacity: 0.4;
-        }
-        .asset-row.open .chevron { transform: rotate(180deg); }
-
-        /* ── Expanded edit panel ── */
-        .asset-edit {
-            display: none;
-            padding: 0 12px 12px;
-            border-top: 1px dashed var(--border);
-        }
-        .asset-row.open .asset-edit { display: block; }
-
-        .edit-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        .edit-grid label {
-            display: block;
-            font-size: 10px;
-            color: var(--muted);
-            margin-bottom: 3px;
-        }
-        .edit-grid input {
-            width: 100%;
-            padding: 9px 10px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 15px;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        .edit-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 8px;
-            font-size: 12px;
-            color: var(--muted);
-        }
+        .hold { color: var(--muted); font-weight: 600; }
         .btn-delete {
-            background: var(--red-bg);
+            background: none;
+            border: none;
             color: var(--red);
-            border: 1px solid #fed7d7;
-            padding: 5px 10px;
-            border-radius: 7px;
-            font-size: 11px;
+            font-size: 16px;
+            line-height: 1;
+            padding: 4px;
             cursor: pointer;
+            opacity: 0.5;
         }
+        .btn-delete:active { opacity: 1; }
 
         /* ── FAB ── */
         .fab-wrap {
@@ -366,6 +349,10 @@
         </div>
     </div>
 
+    <div class="rebalance-summary hidden" id="rebalance-summary">
+        <div class="rebalance-box" id="rebalance-text"></div>
+    </div>
+
     <div class="list-wrap" id="assets-list"></div>
 </div>
 
@@ -395,10 +382,15 @@ const defaultAssets = [
 ];
 
 let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || defaultAssets;
-let openIndex = -1;
 
 function fmt(n, dec = 2) {
     return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function getAction(diff) {
+    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ<br>$${fmt(diff, 0)}` };
+    if (diff < -0.01) return { cls: 'sell', text: `ขาย<br>$${fmt(Math.abs(diff), 0)}` };
+    return { cls: 'hold', text: 'สมดุล' };
 }
 
 function renderAndCalculate() {
@@ -420,64 +412,57 @@ function renderAndCalculate() {
     targetEl.textContent = totalTarget + '%' + (totalTarget !== 100 ? ' ⚠' : ' ✓');
 
     if (myPortfolio.length === 0) {
+        document.getElementById('rebalance-summary').classList.add('hidden');
         list.innerHTML = '<div class="empty-state">ยังไม่มีสินทรัพย์<br>กดปุ่มด้านล่างเพื่อเพิ่ม</div>';
         localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
         return;
     }
 
+    const buys = [], sells = [];
+    let totalBuy = 0, totalSell = 0;
+
     myPortfolio.forEach((asset, index) => {
         const curPct = totalValue > 0 ? (asset.value / totalValue) * 100 : 0;
         const ideal = totalValue * (asset.target / 100);
         const diff = ideal - asset.value;
+        const action = getAction(diff);
 
-        let actionClass = 'hold', actionShort = 'Hold';
-        if (diff > 0.01) {
-            actionClass = 'buy';
-            actionShort = `+$${fmt(diff, 0)}`;
-        } else if (diff < -0.01) {
-            actionClass = 'sell';
-            actionShort = `-$${fmt(Math.abs(diff), 0)}`;
-        }
+        if (diff > 0.01) { buys.push(`${asset.name} $${fmt(diff, 0)}`); totalBuy += diff; }
+        else if (diff < -0.01) { sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}`); totalSell += Math.abs(diff); }
 
         const row = document.createElement('div');
-        row.className = 'asset-row' + (openIndex === index ? ' open' : '');
+        row.className = 'asset-row';
         row.innerHTML = `
-            <div class="asset-top" onclick="toggleRow(${index})">
-                <div class="asset-badge">${asset.name.slice(0, 4)}</div>
-                <div class="asset-info">
-                    <div class="asset-name">${asset.name}</div>
-                    <div class="asset-meta">${curPct.toFixed(1)}% → เป้า ${asset.target}%</div>
-                </div>
-                <div class="asset-action ${actionClass}">${actionShort}</div>
-                <svg class="chevron" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
+            <div class="asset-badge">${asset.name.slice(0, 4)}</div>
+            <div class="asset-info">
+                <div class="asset-name">${asset.name}</div>
+                <div class="asset-meta">${curPct.toFixed(1)}% · เป้า $${fmt(ideal, 0)}</div>
             </div>
-            <div class="asset-edit">
-                <div class="edit-grid">
-                    <div>
-                        <label>มูลค่า (USD)</label>
-                        <input type="number" inputmode="decimal" value="${asset.value || ''}" placeholder="0"
-                            oninput="updateAsset(${index}, 'value', this.value)">
-                    </div>
-                    <div>
-                        <label>เป้าหมาย (%)</label>
-                        <input type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="0"
-                            oninput="updateAsset(${index}, 'target', this.value)">
-                    </div>
-                </div>
-                <div class="edit-footer">
-                    <span>เป้า $${fmt(ideal, 0)}</span>
-                    <button class="btn-delete" type="button" onclick="deleteAsset(${index})">ลบ</button>
-                </div>
-            </div>`;
+            <input class="asset-input" type="number" inputmode="decimal" value="${asset.value || ''}" placeholder="$"
+                aria-label="มูลค่า ${asset.name}"
+                oninput="updateAsset(${index}, 'value', this.value)">
+            <input class="asset-input pct" type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="%"
+                aria-label="เป้าหมาย ${asset.name}"
+                oninput="updateAsset(${index}, 'target', this.value)">
+            <div class="asset-action ${action.cls}">${action.text}</div>
+            <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>`;
         list.appendChild(row);
     });
 
-    localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
-}
+    const summaryEl = document.getElementById('rebalance-summary');
+    const textEl = document.getElementById('rebalance-text');
+    if (buys.length || sells.length) {
+        let html = '';
+        if (buys.length) html += `<div class="buy-line">🟢 ซื้อเพิ่ม: ${buys.join(', ')} (รวม $${fmt(totalBuy, 0)})</div>`;
+        if (sells.length) html += `<div class="sell-line">🔴 ขายออก: ${sells.join(', ')} (รวม $${fmt(totalSell, 0)})</div>`;
+        textEl.innerHTML = html;
+        summaryEl.classList.remove('hidden');
+    } else {
+        textEl.innerHTML = '<div class="hold-line">✓ พอร์ตสมดุลแล้ว — ไม่ต้องซื้อขาย</div>';
+        summaryEl.classList.remove('hidden');
+    }
 
-function toggleRow(index) {
-    openIndex = openIndex === index ? -1 : index;
-    renderAndCalculate();
+    localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
 }
 
 function updateAsset(index, field, val) {
@@ -488,7 +473,6 @@ function updateAsset(index, field, val) {
 function deleteAsset(index) {
     if (confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) {
         myPortfolio.splice(index, 1);
-        openIndex = -1;
         renderAndCalculate();
     }
 }
@@ -508,7 +492,6 @@ function addAsset() {
     const name = document.getElementById('new-asset-name').value.trim().toUpperCase();
     if (!name) return;
     myPortfolio.push({ name, value: 0, target: 0 });
-    openIndex = myPortfolio.length - 1;
     closeAddSheet();
     renderAndCalculate();
 }
