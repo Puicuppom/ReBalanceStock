@@ -166,8 +166,8 @@
         /* ── Asset row — single line ── */
         .asset-row {
             display: grid;
-            grid-template-columns: 38px minmax(0, 1fr) 68px 44px minmax(72px, auto) 28px;
-            align-items: center;
+            grid-template-columns: 38px minmax(0, 1fr) 72px 52px minmax(72px, auto) 28px;
+            align-items: end;
             gap: 6px;
             background: var(--surface);
             border: 1px solid var(--border);
@@ -200,6 +200,19 @@
         .asset-meta {
             font-size: 10px;
             color: var(--muted);
+            white-space: nowrap;
+        }
+        .input-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .input-field label {
+            font-size: 9px;
+            color: var(--muted);
+            text-align: center;
+            line-height: 1;
             white-space: nowrap;
         }
         .asset-input {
@@ -438,12 +451,16 @@ function renderAndCalculate() {
                 <div class="asset-name">${asset.name}</div>
                 <div class="asset-meta">${curPct.toFixed(1)}% · เป้า $${fmt(ideal, 0)}</div>
             </div>
-            <input class="asset-input" type="number" inputmode="decimal" value="${asset.value || ''}" placeholder="$"
-                aria-label="มูลค่า ${asset.name}"
-                oninput="updateAsset(${index}, 'value', this.value)">
-            <input class="asset-input pct" type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="%"
-                aria-label="เป้าหมาย ${asset.name}"
-                oninput="updateAsset(${index}, 'target', this.value)">
+            <div class="input-field">
+                <label for="val-${index}">มูลค่า $</label>
+                <input class="asset-input" id="val-${index}" type="number" inputmode="decimal" value="${asset.value || ''}" placeholder="0"
+                    oninput="updateAsset(${index}, 'value', this.value)">
+            </div>
+            <div class="input-field">
+                <label for="tgt-${index}">เป้า %</label>
+                <input class="asset-input pct" id="tgt-${index}" type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="0"
+                    oninput="updateAsset(${index}, 'target', this.value)">
+            </div>
             <div class="asset-action ${action.cls}">${action.text}</div>
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>`;
         list.appendChild(row);
