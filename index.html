@@ -419,17 +419,24 @@ function getAction(diff) {
     return { cls: 'hold', text: 'สมดุล' };
 }
 
-function renderAndCalculate() {
-    const list = document.getElementById('assets-list');
-    list.innerHTML = '';
-
-    let totalValue = 0;
-    let totalTarget = 0;
+function computePortfolio() {
+    let totalValue = 0, totalTarget = 0;
     myPortfolio.forEach(a => {
         totalValue += a.value;
         totalTarget += a.target;
     });
 
+    const assets = myPortfolio.map((asset, index) => {
+        const curPct = totalValue > 0 ? (asset.value / totalValue) * 100 : 0;
+        const ideal = totalValue * (asset.target / 100);
+        const diff = ideal - asset.value;
+        return { index, asset, curPct, ideal, diff, action: getAction(diff) };
+    });
+
+    return { totalValue, totalTarget, assets };
+}
+
+function updateSummary(totalValue, totalTarget, assets) {
     document.getElementById('total-value').textContent = fmt(totalValue, 0);
 
     const targetBox = document.getElementById('target-box');
@@ -437,27 +444,64 @@ function renderAndCalculate() {
     targetBox.className = 'summary-item' + (totalTarget === 100 ? ' ok' : ' warn');
     targetEl.textContent = totalTarget + '%' + (totalTarget !== 100 ? ' ⚠' : ' ✓');
 
+    const summaryEl = document.getElementById('rebalance-summary');
+    const textEl = document.getElementById('rebalance-text');
+    const buys = [], sells = [];
+    let totalBuy = 0, totalSell = 0;
+
+    assets.forEach(({ asset, diff }) => {
+        if (diff > 0.01) { buys.push(`${asset.name} $${fmt(diff, 0)}`); totalBuy += diff; }
+        else if (diff < -0.01) { sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}`); totalSell += Math.abs(diff); }
+    });
+
+    if (buys.length || sells.length) {
+        let html = '';
+        if (buys.length) html += `<div class="buy-line">🟢 ซื้อเพิ่ม: ${buys.join(', ')} (รวม $${fmt(totalBuy, 0)})</div>`;
+        if (sells.length) html += `<div class="sell-line">🔴 ขายออก: ${sells.join(', ')} (รวม $${fmt(totalSell, 0)})</div>`;
+        textEl.innerHTML = html;
+        summaryEl.classList.remove('hidden');
+    } else if (assets.length) {
+        textEl.innerHTML = '<div class="hold-line">✓ พอร์ตสมดุลแล้ว — ไม่ต้องซื้อขาย</div>';
+        summaryEl.classList.remove('hidden');
+    } else {
+        summaryEl.classList.add('hidden');
+    }
+}
+
+function recalculate() {
+    const { totalValue, totalTarget, assets } = computePortfolio();
+    updateSummary(totalValue, totalTarget, assets);
+
+    assets.forEach(({ index, curPct, ideal, action }) => {
+        const card = document.querySelector(`.asset-card[data-index="${index}"]`);
+        if (!card) return;
+        card.querySelector('.asset-pct').textContent = curPct.toFixed(1) + '%';
+        card.querySelector('.asset-ideal').textContent = '$' + fmt(ideal, 0);
+        const actionEl = card.querySelector('.asset-action');
+        actionEl.className = 'asset-action ' + action.cls;
+        actionEl.innerHTML = action.text;
+    });
+
+    localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
+}
+
+function renderAndCalculate() {
+    const list = document.getElementById('assets-list');
+    list.innerHTML = '';
+
+    const { totalValue, totalTarget, assets } = computePortfolio();
+    updateSummary(totalValue, totalTarget, assets);
+
     if (myPortfolio.length === 0) {
-        document.getElementById('rebalance-summary').classList.add('hidden');
         list.innerHTML = '<div class="empty-state">ยังไม่มีสินทรัพย์<br>กดปุ่มด้านล่างเพื่อเพิ่ม</div>';
         localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
         return;
     }
 
-    const buys = [], sells = [];
-    let totalBuy = 0, totalSell = 0;
-
-    myPortfolio.forEach((asset, index) => {
-        const curPct = totalValue > 0 ? (asset.value / totalValue) * 100 : 0;
-        const ideal = totalValue * (asset.target / 100);
-        const diff = ideal - asset.value;
-        const action = getAction(diff);
-
-        if (diff > 0.01) { buys.push(`${asset.name} $${fmt(diff, 0)}`); totalBuy += diff; }
-        else if (diff < -0.01) { sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}`); totalSell += Math.abs(diff); }
-
+    assets.forEach(({ index, asset, curPct, ideal, action }) => {
         const row = document.createElement('div');
         row.className = 'asset-card';
+        row.dataset.index = index;
         row.innerHTML = `
             <div class="asset-header">
                 <div class="asset-badge">${asset.name.slice(0, 4)}</div>
@@ -468,21 +512,21 @@ function renderAndCalculate() {
             <div class="asset-grid">
                 <div class="cell">
                     <span class="cell-label">มูลค่าจริง</span>
-                    <input class="cell-input" id="val-${index}" type="number" inputmode="decimal"
+                    <input class="cell-input" type="number" inputmode="decimal"
                         value="${asset.value || ''}" placeholder="0"
                         oninput="updateAsset(${index}, 'value', this.value)">
                 </div>
                 <div class="cell">
                     <span class="cell-label">สัดส่วนจริง</span>
-                    <span class="cell-value">${curPct.toFixed(1)}%</span>
+                    <span class="cell-value asset-pct">${curPct.toFixed(1)}%</span>
                 </div>
                 <div class="cell">
                     <span class="cell-label">มูลค่าเป้าหมาย</span>
-                    <span class="cell-value">$${fmt(ideal, 0)}</span>
+                    <span class="cell-value asset-ideal">$${fmt(ideal, 0)}</span>
                 </div>
                 <div class="cell">
                     <span class="cell-label">สัดส่วนเป้าหมาย</span>
-                    <input class="cell-input" id="tgt-${index}" type="number" inputmode="decimal"
+                    <input class="cell-input" type="number" inputmode="decimal"
                         value="${asset.target || ''}" placeholder="0"
                         oninput="updateAsset(${index}, 'target', this.value)">
                 </div>
@@ -490,25 +534,12 @@ function renderAndCalculate() {
         list.appendChild(row);
     });
 
-    const summaryEl = document.getElementById('rebalance-summary');
-    const textEl = document.getElementById('rebalance-text');
-    if (buys.length || sells.length) {
-        let html = '';
-        if (buys.length) html += `<div class="buy-line">🟢 ซื้อเพิ่ม: ${buys.join(', ')} (รวม $${fmt(totalBuy, 0)})</div>`;
-        if (sells.length) html += `<div class="sell-line">🔴 ขายออก: ${sells.join(', ')} (รวม $${fmt(totalSell, 0)})</div>`;
-        textEl.innerHTML = html;
-        summaryEl.classList.remove('hidden');
-    } else {
-        textEl.innerHTML = '<div class="hold-line">✓ พอร์ตสมดุลแล้ว — ไม่ต้องซื้อขาย</div>';
-        summaryEl.classList.remove('hidden');
-    }
-
     localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
 }
 
 function updateAsset(index, field, val) {
     myPortfolio[index][field] = parseFloat(val) || 0;
-    renderAndCalculate();
+    recalculate();
 }
 
 function deleteAsset(index) {
