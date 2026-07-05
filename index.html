@@ -170,7 +170,35 @@
             border-radius: var(--radius);
             margin-bottom: 8px;
             padding: 10px 12px;
+            transition: box-shadow 0.15s;
         }
+        .asset-card.drag-float {
+            position: fixed;
+            z-index: 200;
+            margin: 0;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+            opacity: 0.96;
+            pointer-events: none;
+        }
+        .drag-placeholder {
+            background: #ebf8ff;
+            border: 2px dashed var(--accent);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+        }
+        .list-wrap.drag-active { touch-action: none; }
+        .drag-handle {
+            flex-shrink: 0;
+            color: var(--muted);
+            font-size: 20px;
+            line-height: 1;
+            padding: 4px 2px;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+            opacity: 0.4;
+        }
+        .drag-handle:active { opacity: 0.8; }
         .asset-header {
             display: flex;
             align-items: center;
@@ -359,7 +387,7 @@
         <img class="header-icon" src="/icons/icon-192.png" alt="ReBalance" width="36" height="36">
         <div class="header-text">
             <h1>ReBalance Stock</h1>
-            <p>บันทึกอัตโนมัติในเครื่อง</p>
+            <p>กดค้าง ≡ เพื่อสลับลำดับ</p>
         </div>
         <button class="btn-install" id="btn-install" type="button">ติดตั้ง</button>
     </header>
@@ -504,6 +532,7 @@ function renderAndCalculate() {
         row.dataset.index = index;
         row.innerHTML = `
             <div class="asset-header">
+                <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
                 <div class="asset-badge">${asset.name.slice(0, 4)}</div>
                 <div class="asset-name">${asset.name}</div>
                 <div class="asset-action ${action.cls}">${action.text}</div>
@@ -571,6 +600,119 @@ function addAsset() {
 document.getElementById('new-asset-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') addAsset();
 });
+
+/* Drag to reorder (long-press on ≡ handle) */
+let drag = null;
+
+function getPoint(e) {
+    return e.touches ? e.touches[0] : e;
+}
+
+function activateDrag(point) {
+    if (!drag || drag.active) return;
+    const { card, list } = drag;
+    const rect = card.getBoundingClientRect();
+
+    drag.active = true;
+    drag.placeholder = document.createElement('div');
+    drag.placeholder.className = 'drag-placeholder';
+    drag.placeholder.style.height = rect.height + 'px';
+    list.insertBefore(drag.placeholder, card);
+
+    card.classList.add('drag-float');
+    card.style.width = rect.width + 'px';
+    card.style.left = rect.left + 'px';
+    card.style.top = (point.clientY - drag.offsetY) + 'px';
+
+    list.classList.add('drag-active');
+    if (navigator.vibrate) navigator.vibrate(20);
+}
+
+function movePlaceholder(clientY) {
+    const cards = [...drag.list.querySelectorAll('.asset-card')];
+    for (const card of cards) {
+        if (card === drag.card) continue;
+        const rect = card.getBoundingClientRect();
+        if (clientY < rect.top + rect.height / 2) {
+            drag.list.insertBefore(drag.placeholder, card);
+            return;
+        }
+    }
+    drag.list.appendChild(drag.placeholder);
+}
+
+function finishDrag() {
+    if (!drag.active) return;
+    const { card, list, placeholder } = drag;
+    list.insertBefore(card, placeholder);
+    placeholder.remove();
+
+    card.classList.remove('drag-float');
+    card.removeAttribute('style');
+    list.classList.remove('drag-active');
+
+    const cards = [...list.querySelectorAll('.asset-card')];
+    myPortfolio = cards.map(c => myPortfolio[parseInt(c.dataset.index)]);
+    renderAndCalculate();
+}
+
+function onDragStart(e) {
+    if (drag) return;
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+
+    const card = handle.closest('.asset-card');
+    if (!card) return;
+
+    const point = getPoint(e);
+    drag = {
+        card,
+        list: card.parentElement,
+        startX: point.clientX,
+        startY: point.clientY,
+        offsetY: point.clientY - card.getBoundingClientRect().top,
+        timer: setTimeout(() => activateDrag(point), 400),
+        active: false
+    };
+}
+
+function onDragMove(e) {
+    if (!drag) return;
+    const point = getPoint(e);
+
+    if (!drag.active) {
+        if (Math.abs(point.clientY - drag.startY) > 8 || Math.abs(point.clientX - drag.startX) > 8) {
+            clearTimeout(drag.timer);
+            drag = null;
+        }
+        return;
+    }
+
+    e.preventDefault();
+    drag.card.style.top = (point.clientY - drag.offsetY) + 'px';
+    movePlaceholder(point.clientY);
+}
+
+function onDragEnd() {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.active) finishDrag();
+    drag = null;
+}
+
+(function initDragSort() {
+    const list = document.getElementById('assets-list');
+    list.addEventListener('touchstart', onDragStart, { passive: true });
+    list.addEventListener('mousedown', onDragStart);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('touchend', onDragEnd);
+    document.addEventListener('touchcancel', onDragEnd);
+    document.addEventListener('mouseup', onDragEnd);
+    list.addEventListener('contextmenu', e => {
+        if (e.target.closest('.drag-handle')) e.preventDefault();
+    });
+})();
 
 /* PWA */
 let deferredPrompt;
