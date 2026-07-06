@@ -1487,6 +1487,17 @@ function fmt(n, dec = 2) {
     return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
+function formatInputVal(n, dec = 2) {
+    if (n == null || n === '' || isNaN(n)) return '';
+    return Number(n).toFixed(dec);
+}
+
+let persistDebounce = null;
+function schedulePersistPortfolio() {
+    clearTimeout(persistDebounce);
+    persistDebounce = setTimeout(persistPortfolio, 600);
+}
+
 function getAction(diff) {
     if (diff > 0.01) return { cls: 'buy', text: `ซื้อ $${fmt(diff, 0)}` };
     if (diff < -0.01) return { cls: 'sell', text: `ขาย $${fmt(Math.abs(diff), 0)}` };
@@ -1519,7 +1530,7 @@ function computePortfolio() {
 function formatProfit(profit, profitPct) {
     const sign = profit >= 0 ? '+' : '';
     const cls = profit >= 0 ? 'gain' : 'loss';
-    return { text: `${sign}${profitPct.toFixed(1)}% ($${fmt(Math.abs(profit), 0)})`, cls };
+    return { text: `${sign}${profitPct.toFixed(2)}% ($${fmt(Math.abs(profit), 0)})`, cls };
 }
 
 function updateSummary(totalValue, totalTarget, assets) {
@@ -1646,7 +1657,7 @@ function recalculate() {
         const targetPctEl = card.querySelector('.asset-target-pct');
         if (targetPctEl) targetPctEl.textContent = (asset.target || 0) + '%';
         const pctEl = card.querySelector('.asset-pct');
-        if (pctEl) pctEl.textContent = curPct.toFixed(1) + '%';
+        if (pctEl) pctEl.textContent = curPct.toFixed(2) + '%';
         const idealEl = card.querySelector('.asset-ideal');
         if (idealEl) idealEl.textContent = '$' + fmt(ideal, 0);
         const valEl = card.querySelector('.asset-value');
@@ -1675,14 +1686,17 @@ function recalculate() {
         updateAdviceRow(card, profitAdvice, action);
     });
 
-    if (assetSheetIndex != null) refreshAssetSheet();
+    if (assetSheetIndex != null) {
+        const item = assets.find(a => a.index === assetSheetIndex);
+        if (item) updateAssetSheetLive(item);
+    }
 }
 
 function formatPlPct(profitPct, cost) {
     if (!cost) return { text: '—', cls: 'muted' };
     const sign = profitPct >= 0 ? '+' : '';
     return {
-        text: sign + profitPct.toFixed(1) + '%',
+        text: sign + profitPct.toFixed(2) + '%',
         cls: profitPct >= 0 ? 'gain' : 'loss'
     };
 }
@@ -1710,35 +1724,53 @@ function refreshAssetSheet() {
     document.getElementById('asset-sheet-body').innerHTML = renderAssetSheetBody(item);
 }
 
+function updateAssetSheetLive({ cost, profit, profitPct, profitAdvice }) {
+    const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
+    const profitEl = document.getElementById('asset-sheet-profit');
+    if (profitEl) {
+        profitEl.textContent = profitFmt.text;
+        profitEl.className = 'cell-value asset-profit ' + profitFmt.cls;
+    }
+    const adviceEl = document.getElementById('asset-sheet-advice');
+    if (adviceEl) {
+        if (showProfitTaking() && profitAdvice) {
+            adviceEl.textContent = `${profitAdvice.text} · ${profitAdvice.sub || ''}`;
+            adviceEl.style.display = '';
+        } else {
+            adviceEl.style.display = 'none';
+        }
+    }
+}
+
 function renderAssetSheetBody({ index, asset, cost, profit, profitPct, profitAdvice }) {
     const role = getAssetRole(asset.name);
     const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
-    const adviceHint = showProfitTaking() && profitAdvice
-        ? `<div class="setting-hint" style="margin-top:8px">${profitAdvice.text} · ${profitAdvice.sub || ''}</div>`
+    const adviceText = showProfitTaking() && profitAdvice
+        ? `${profitAdvice.text} · ${profitAdvice.sub || ''}`
         : '';
     return `
         ${role ? `<div class="setting-hint" style="margin-bottom:12px">${role}</div>` : ''}
         <div class="asset-sheet-grid">
             <div class="asset-sheet-field">
                 <label>จำนวนหุ้น</label>
-                <input type="number" inputmode="decimal" value="${asset.shares || ''}" placeholder="0" step="any"
+                <input type="text" inputmode="decimal" value="${asset.shares ? formatInputVal(asset.shares) : ''}" placeholder="0.00" autocomplete="off"
                     oninput="updateAsset(${index}, 'shares', this.value)">
             </div>
             <div class="asset-sheet-field">
                 <label>ต้นทุนเฉลี่ย/หุ้น ($)</label>
-                <input type="number" inputmode="decimal" value="${asset.avgCost || ''}" placeholder="0" step="any"
+                <input type="text" inputmode="decimal" value="${asset.avgCost ? formatInputVal(asset.avgCost) : ''}" placeholder="0.00" autocomplete="off"
                     oninput="updateAsset(${index}, 'avgCost', this.value)">
             </div>
             <div class="asset-sheet-field">
                 <label>เป้าหมายสัดส่วน (%)</label>
-                <input type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="0"
+                <input type="text" inputmode="decimal" value="${asset.target ? formatInputVal(asset.target) : ''}" placeholder="0.00" autocomplete="off"
                     oninput="updateAsset(${index}, 'target', this.value)">
             </div>
             ${showProfitTaking() ? `
             <div class="asset-sheet-field">
                 <label>กำไร/ขาดทุน</label>
-                <div class="buy-item"><span class="cell-value asset-profit ${profitFmt.cls}">${profitFmt.text}</span></div>
-                ${adviceHint}
+                <div class="buy-item"><span class="cell-value asset-profit ${profitFmt.cls}" id="asset-sheet-profit">${profitFmt.text}</span></div>
+                <div class="setting-hint asset-sheet-advice" id="asset-sheet-advice" style="margin-top:8px;${adviceText ? '' : 'display:none'}">${adviceText}</div>
             </div>` : ''}
         </div>
         <button class="btn-settings-done" type="button" style="margin-top:14px;background:var(--red)" onclick="deleteAssetFromSheet(${index})">ลบออกจากพอร์ต</button>
@@ -1760,7 +1792,7 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, p
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">สัดส่วน · จริง</span>
-                        <span class="stat-num asset-pct hi">${curPct.toFixed(1)}%</span>
+                        <span class="stat-num asset-pct hi">${curPct.toFixed(2)}%</span>
                     </div>
                 </div>
                 <div class="stat-pair">
@@ -1831,10 +1863,16 @@ function renderAndCalculate() {
 }
 
 function updateAsset(index, field, val) {
-    myPortfolio[index][field] = parseFloat(val) || 0;
+    const trimmed = String(val).trim();
+    if (trimmed === '' || trimmed === '.' || trimmed === '-') {
+        myPortfolio[index][field] = 0;
+    } else {
+        const num = parseFloat(trimmed);
+        if (!isNaN(num)) myPortfolio[index][field] = num;
+    }
     syncAssetValues();
     recalculate();
-    persistPortfolio();
+    schedulePersistPortfolio();
 }
 
 function deleteAssetFromSheet(index) {
