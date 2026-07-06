@@ -398,75 +398,92 @@
             text-overflow: ellipsis;
         }
 
-        /* ── Compact asset card ── */
-        .asset-compact {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .compact-stat {
-            background: #f7fafc;
-            border-radius: 8px;
-            padding: 8px 10px;
-            min-width: 0;
-        }
-        .compact-pct {
-            font-size: 15px;
-            font-weight: 700;
-            color: #2d3748;
-        }
-        .compact-pct .asset-pct { color: var(--accent); }
-        .compact-target {
-            display: inline-flex;
-            align-items: center;
-            gap: 2px;
-            margin-top: 2px;
-        }
-        .compact-input {
-            width: 42px;
-            padding: 2px 4px;
+        /* ── Asset card stats ── */
+        .asset-stats {
+            background: #f8fafc;
             border: 1px solid var(--border);
-            border-radius: 6px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .stat-row {
+            display: grid;
+            grid-template-columns: 58px 1fr 1fr;
+            gap: 2px 10px;
+            padding: 9px 12px;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-row.price-row { grid-template-columns: 58px 1fr 1fr 52px; }
+        .stat-name {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted);
+            line-height: 1.2;
+        }
+        .stat-cell { text-align: right; min-width: 0; }
+        .stat-tag {
+            display: block;
+            font-size: 9px;
+            font-weight: 600;
+            color: #a0aec0;
+            margin-bottom: 2px;
+        }
+        .stat-num {
+            display: block;
             font-size: 14px;
             font-weight: 700;
-            text-align: center;
-            -webkit-appearance: none;
-            appearance: none;
+            color: #2d3748;
+            white-space: nowrap;
         }
-        .compact-shares {
+        .stat-num.hi { color: var(--accent); }
+        .stat-num.gain { color: var(--green); }
+        .stat-num.loss { color: var(--red); }
+        .stat-num.muted { color: var(--muted); font-weight: 600; }
+        .asset-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 8px;
+            min-height: 22px;
+        }
+        .asset-footer .buy-badge,
+        .asset-footer .profit-badge { margin: 0; }
+        .asset-footer .asset-action { font-size: 13px; }
+        .btn-card-gear {
+            flex-shrink: 0;
             background: #f7fafc;
-            border-radius: 8px;
-            padding: 8px 10px;
-            margin-bottom: 6px;
-        }
-        .compact-shares .cell-input {
-            width: 100%;
-            padding: 6px 8px;
             border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 15px;
-            font-weight: 600;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        .btn-expand {
-            width: 100%;
-            padding: 6px 8px;
-            border: none;
-            background: transparent;
             color: var(--muted);
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 14px;
+            line-height: 1;
+            padding: 5px 8px;
+            border-radius: 8px;
             cursor: pointer;
         }
-        .asset-detail.hidden { display: none; }
-        .asset-detail {
-            margin-top: 6px;
-            padding-top: 8px;
-            border-top: 1px dashed var(--border);
+        .asset-sheet-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
-        .asset-detail .asset-grid { margin-bottom: 0; }
+        .asset-sheet-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        .asset-sheet-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            -webkit-appearance: none;
+            appearance: none;
+        }
 
         /* ── Collapsible settings ── */
         .settings-section { padding-bottom: 0; margin-bottom: 10px; border-bottom: none; }
@@ -542,9 +559,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 8px;
-            padding-bottom: 8px;
-            border-bottom: 1px dashed var(--border);
+            margin-bottom: 10px;
         }
         .asset-badge {
             flex-shrink: 0;
@@ -891,6 +906,16 @@
     </div>
 </div>
 
+<div class="overlay" id="asset-overlay" onclick="closeAssetSheet(event)">
+    <div class="sheet" onclick="event.stopPropagation()">
+        <div class="sheet-head">
+            <h3 id="asset-sheet-title">ตั้งค่า</h3>
+            <button class="btn-sheet-close" type="button" aria-label="ปิด" onclick="closeAssetSheet()">×</button>
+        </div>
+        <div id="asset-sheet-body"></div>
+    </div>
+</div>
+
 <div class="overlay" id="add-overlay" onclick="closeAddSheet(event)">
     <div class="sheet" onclick="event.stopPropagation()">
         <h3>เพิ่มสินทรัพย์ใหม่</h3>
@@ -1137,11 +1162,6 @@ function applyCloudData(cloud) {
         localStorage.setItem('activeTab', activeTab);
         updateTabUI();
     }
-    if (Array.isArray(cloud.expandedAssets)) {
-        expandedAssets.clear();
-        cloud.expandedAssets.forEach(n => expandedAssets.add(n));
-        localStorage.setItem('expandedAssets', JSON.stringify([...expandedAssets]));
-    }
     if (cloud.strategyTargets) {
         localStorage.setItem('strategyTargets', cloud.strategyTargets);
     }
@@ -1164,7 +1184,6 @@ function getCloudPayload() {
         profitTiers,
         dipBuyPct,
         activeTab,
-        expandedAssets: [...expandedAssets],
         strategyTargets: localStorage.getItem('strategyTargets') || '2',
         updatedAt: Date.now()
     };
@@ -1314,26 +1333,6 @@ function toggleSettingsPanel(id) {
 function updateBuyPanelSummary() {
     const el = document.getElementById('buy-panel-summary');
     if (el) el.textContent = `ร่วง ${dipBuyPct}%`;
-}
-
-const expandedAssets = new Set(JSON.parse(localStorage.getItem('expandedAssets') || '[]'));
-
-function toggleAssetDetail(name) {
-    if (expandedAssets.has(name)) expandedAssets.delete(name);
-    else expandedAssets.add(name);
-    localStorage.setItem('expandedAssets', JSON.stringify([...expandedAssets]));
-    applyAssetExpandState(name);
-    scheduleCloudSave();
-}
-
-function applyAssetExpandState(name) {
-    const card = document.querySelector(`.asset-card[data-name="${name}"]`);
-    if (!card) return;
-    const open = expandedAssets.has(name);
-    const detail = card.querySelector('.asset-detail');
-    const btn = card.querySelector('.btn-expand');
-    if (detail) detail.classList.toggle('hidden', !open);
-    if (btn) btn.textContent = open ? 'ย่อ ▲' : 'รายละเอียด ▼';
 }
 
 updateTabUI();
@@ -1674,27 +1673,6 @@ function updateBuyBadge(card, buyAlerts, tierStatus, cost) {
     }
 }
 
-function updateTierUI(card, index, tierStatus, cost, profit, profitPct, buyAlerts) {
-    if (showProfitTaking()) {
-        const profitEl = card.querySelector('.asset-profit');
-        if (profitEl) {
-            if (cost > 0) {
-                const p = formatProfit(profit, profitPct);
-                profitEl.className = 'cell-value asset-profit ' + p.cls;
-                profitEl.textContent = p.text;
-            } else {
-                profitEl.className = 'cell-value asset-profit';
-                profitEl.textContent = '—';
-            }
-        }
-    }
-
-    updateBuyBadge(card, buyAlerts, tierStatus, cost);
-
-    const tierEl = card.querySelector('.tier-status-wrap');
-    if (tierEl && showProfitTaking()) tierEl.innerHTML = renderTierButtons(index, tierStatus, cost);
-}
-
 function recalculate() {
     const { totalValue, totalTarget, assets } = computePortfolio();
     updateSummary(totalValue, totalTarget, assets);
@@ -1703,98 +1681,162 @@ function recalculate() {
     assets.forEach(({ index, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts, asset }) => {
         const card = document.querySelector(`.asset-card[data-index="${index}"]`);
         if (!card) return;
-        const valEl = card.querySelector('.asset-value');
-        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
+
+        const targetPctEl = card.querySelector('.asset-target-pct');
+        if (targetPctEl) targetPctEl.textContent = (asset.target || 0) + '%';
         const pctEl = card.querySelector('.asset-pct');
-        if (pctEl) pctEl.textContent = curPct.toFixed(1);
+        if (pctEl) pctEl.textContent = curPct.toFixed(1) + '%';
         const idealEl = card.querySelector('.asset-ideal');
         if (idealEl) idealEl.textContent = '$' + fmt(ideal, 0);
+        const valEl = card.querySelector('.asset-value');
+        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
+
+        const costEl = card.querySelector('.asset-cost');
+        if (costEl) {
+            costEl.textContent = asset.avgCost > 0 ? '$' + fmt(asset.avgCost, 2) : '—';
+            costEl.className = 'stat-num asset-cost' + (asset.avgCost > 0 ? '' : ' muted');
+        }
+
         const price = getPrice(asset.name);
         const priceEl = card.querySelector('.asset-price');
         if (priceEl) {
-            if (price > 0) {
-                priceEl.className = 'cell-value asset-price price-live';
-                priceEl.textContent = '$' + fmt(price, 2);
-            } else {
-                priceEl.className = 'cell-value asset-price price-meta err';
-                priceEl.textContent = priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…';
-            }
+            priceEl.textContent = price > 0 ? '$' + fmt(price, 2) : (priceCache[asset.name]?.error ? 'ไม่พบ' : '…');
+            priceEl.className = 'stat-num asset-price hi';
         }
-        const actionEl = card.querySelector('.asset-action');
+
+        const pl = formatPlPct(profitPct, cost);
+        const plEl = card.querySelector('.asset-pl-pct');
+        if (plEl) {
+            plEl.textContent = pl.text;
+            plEl.className = 'stat-num asset-pl-pct ' + pl.cls;
+        }
+
+        const actionEl = card.querySelector('.asset-footer .asset-action');
         if (actionEl) {
             actionEl.className = 'asset-action ' + action.cls;
             actionEl.innerHTML = action.text;
         }
-        updateTierUI(card, index, tierStatus, cost, profit, profitPct, buyAlerts);
+        updateBuyBadge(card, buyAlerts, tierStatus, cost);
     });
 
+    if (assetSheetIndex != null) refreshAssetSheet();
     persistPortfolio();
 }
 
-function renderAssetDetail(index, asset, ideal, profitFmt, cost, profit, profitPct, tierStatus) {
-    const price = getPrice(asset.name);
-    const priceText = price > 0 ? '$' + fmt(price, 2) : (priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…');
-    const priceCls = price > 0 ? 'cell-value asset-price price-live' : 'cell-value asset-price price-meta err';
-    const role = getAssetRole(asset.name);
-    return `
-            ${role ? `<div class="asset-role" style="margin-bottom:8px">${role}</div>` : ''}
-            <div class="asset-grid">
-                <div class="cell">
-                    <span class="cell-label">ราคาปัจจุบัน</span>
-                    <span class="${priceCls} asset-price">${priceText}</span>
-                </div>
-                <div class="cell">
-                    <span class="cell-label">ต้นทุนเฉลี่ย/หุ้น</span>
-                    <input class="cell-input" type="number" inputmode="decimal"
-                        value="${asset.avgCost || ''}" placeholder="0" step="any"
-                        oninput="updateAsset(${index}, 'avgCost', this.value)">
-                </div>
-                <div class="cell">
-                    <span class="cell-label">มูลค่าเป้าหมาย</span>
-                    <span class="cell-value asset-ideal">$${fmt(ideal, 0)}</span>
-                </div>
-                ${showProfitTaking() ? `
-                <div class="cell">
-                    <span class="cell-label">กำไร/ขาดทุน</span>
-                    <span class="cell-value asset-profit ${profitFmt.cls}">${profitFmt.text}</span>
-                </div>` : ''}
-            </div>
-            <div class="tier-status-wrap">${showProfitTaking() ? renderTierButtons(index, tierStatus, cost) : ''}</div>`;
+function formatPlPct(profitPct, cost) {
+    if (!cost) return { text: '—', cls: 'muted' };
+    const sign = profitPct >= 0 ? '+' : '';
+    return {
+        text: sign + profitPct.toFixed(1) + '%',
+        cls: profitPct >= 0 ? 'gain' : 'loss'
+    };
 }
 
-function renderAssetCard(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus) {
-    const expanded = expandedAssets.has(asset.name);
+let assetSheetIndex = null;
+
+function openAssetSheet(index) {
+    assetSheetIndex = index;
+    document.getElementById('asset-sheet-title').textContent = myPortfolio[index].name;
+    refreshAssetSheet();
+    document.getElementById('asset-overlay').classList.add('open');
+}
+
+function closeAssetSheet(e) {
+    if (e && e.target !== document.getElementById('asset-overlay')) return;
+    document.getElementById('asset-overlay').classList.remove('open');
+    assetSheetIndex = null;
+}
+
+function refreshAssetSheet() {
+    if (assetSheetIndex == null) return;
+    const { assets } = computePortfolio();
+    const item = assets.find(a => a.index === assetSheetIndex);
+    if (!item) return;
+    document.getElementById('asset-sheet-body').innerHTML = renderAssetSheetBody(item);
+}
+
+function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tierStatus }) {
+    const role = getAssetRole(asset.name);
+    const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
     return `
-            <div class="asset-compact">
-                <div class="compact-stat">
-                    <span class="cell-label">สัดส่วน</span>
-                    <div class="compact-pct"><span class="asset-pct">${curPct.toFixed(1)}</span>%</div>
-                    <div class="compact-target">
-                        <span class="cell-label" style="margin:0">เป้า</span>
-                        <input class="compact-input asset-target" type="number" inputmode="decimal"
-                            value="${asset.target || ''}" placeholder="0"
-                            oninput="updateAsset(${index}, 'target', this.value)">%
-                    </div>
-                </div>
-                <div class="compact-stat">
-                    <span class="cell-label">มูลค่า</span>
-                    <span class="cell-value asset-value">$${fmt(asset.value, 0)}</span>
-                </div>
-            </div>
-            <div class="compact-shares">
-                <span class="cell-label">จำนวนหุ้น</span>
-                <input class="cell-input" type="number" inputmode="decimal"
-                    value="${asset.shares || ''}" placeholder="0" step="any"
+        ${role ? `<div class="setting-hint" style="margin-bottom:12px">${role}</div>` : ''}
+        <div class="asset-sheet-grid">
+            <div class="asset-sheet-field">
+                <label>จำนวนหุ้น</label>
+                <input type="number" inputmode="decimal" value="${asset.shares || ''}" placeholder="0" step="any"
                     oninput="updateAsset(${index}, 'shares', this.value)">
             </div>
-            <button type="button" class="btn-expand" onclick="toggleAssetDetail('${asset.name}')">${expanded ? 'ย่อ ▲' : 'รายละเอียด ▼'}</button>
-            <div class="asset-detail${expanded ? '' : ' hidden'}">
-                ${renderAssetDetail(index, asset, ideal, profitFmt, cost, profit, profitPct, tierStatus)}
+            <div class="asset-sheet-field">
+                <label>ต้นทุนเฉลี่ย/หุ้น ($)</label>
+                <input type="number" inputmode="decimal" value="${asset.avgCost || ''}" placeholder="0" step="any"
+                    oninput="updateAsset(${index}, 'avgCost', this.value)">
+            </div>
+            <div class="asset-sheet-field">
+                <label>เป้าหมายสัดส่วน (%)</label>
+                <input type="number" inputmode="decimal" value="${asset.target || ''}" placeholder="0"
+                    oninput="updateAsset(${index}, 'target', this.value)">
+            </div>
+            ${showProfitTaking() ? `
+            <div class="asset-sheet-field">
+                <label>กำไร/ขาดทุน</label>
+                <div class="buy-item"><span class="cell-value asset-profit ${profitFmt.cls}">${profitFmt.text}</span></div>
+            </div>
+            <div class="tier-status-wrap">${renderTierButtons(index, tierStatus, cost)}</div>` : ''}
+        </div>
+        <button class="btn-settings-done" type="button" style="margin-top:14px;background:var(--red)" onclick="deleteAssetFromSheet(${index})">ลบออกจากพอร์ต</button>
+        <button class="btn-settings-done" type="button" onclick="closeAssetSheet()">เสร็จสิ้น</button>`;
+}
+
+function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct) {
+    const pl = formatPlPct(profitPct, cost);
+    const price = getPrice(asset.name);
+    const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
+    const costText = asset.avgCost > 0 ? '$' + fmt(asset.avgCost, 2) : '—';
+    const costCls = asset.avgCost > 0 ? '' : ' muted';
+    return `
+            <div class="asset-stats">
+                <div class="stat-row">
+                    <div class="stat-name">สัดส่วน</div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">เป้า</span>
+                        <span class="stat-num asset-target-pct">${asset.target || 0}%</span>
+                    </div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">จริง</span>
+                        <span class="stat-num asset-pct hi">${curPct.toFixed(1)}%</span>
+                    </div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-name">มูลค่า</div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">เป้า</span>
+                        <span class="stat-num asset-ideal">$${fmt(ideal, 0)}</span>
+                    </div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">จริง</span>
+                        <span class="stat-num asset-value hi">$${fmt(asset.value, 0)}</span>
+                    </div>
+                </div>
+                <div class="stat-row price-row">
+                    <div class="stat-name">ราคา</div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">ทุน</span>
+                        <span class="stat-num asset-cost${costCls}">${costText}</span>
+                    </div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">ปัจจุบัน</span>
+                        <span class="stat-num asset-price hi">${priceText}</span>
+                    </div>
+                    <div class="stat-cell">
+                        <span class="stat-tag">P/L</span>
+                        <span class="stat-num asset-pl-pct ${pl.cls}">${pl.text}</span>
+                    </div>
+                </div>
             </div>`;
 }
 
 function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts) {
-    return renderAssetCard(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus);
+    return renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct);
 }
 
 function appendAssetCard(list, payload) {
@@ -1818,15 +1860,18 @@ function appendAssetCard(list, payload) {
         <div class="asset-header">
             <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
             <div class="asset-badge">${asset.name.slice(0, 4)}</div>
-            <div class="asset-name-wrap" style="flex:1;min-width:0">
-                <div class="asset-name">${asset.name}</div>
-            </div>
-            <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
-            <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
-            <div class="asset-action ${action.cls}">${action.text}</div>
+            <div class="asset-name">${asset.name}</div>
+            <button class="btn-card-gear" type="button" aria-label="ตั้งค่า ${asset.name}" onclick="openAssetSheet(${index})">⚙</button>
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
         </div>
-        ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts)}`;
+        ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts)}
+        <div class="asset-footer">
+            <div class="asset-footer-badges">
+                <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
+                <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
+            </div>
+            <div class="asset-action ${action.cls}">${action.text}</div>
+        </div>`;
     list.appendChild(row);
 }
 
@@ -1858,8 +1903,16 @@ function updateAsset(index, field, val) {
     recalculate();
 }
 
+function deleteAssetFromSheet(index) {
+    if (!confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) return;
+    closeAssetSheet();
+    myPortfolio.splice(index, 1);
+    renderAndCalculate();
+}
+
 function deleteAsset(index) {
     if (confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) {
+        if (assetSheetIndex === index) closeAssetSheet();
         myPortfolio.splice(index, 1);
         renderAndCalculate();
     }
