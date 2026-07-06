@@ -398,59 +398,64 @@
             text-overflow: ellipsis;
         }
 
-        /* ── Asset card stats ── */
+        /* ── Asset card stats — 2 equal columns ── */
         .asset-stats {
-            background: #f8fafc;
             border: 1px solid var(--border);
-            border-radius: 10px;
+            border-radius: 12px;
             overflow: hidden;
+            background: #fff;
         }
-        .stat-row {
+        .stat-pair {
             display: grid;
-            grid-template-columns: 58px 1fr 1fr;
-            gap: 2px 10px;
-            padding: 9px 12px;
-            align-items: center;
+            grid-template-columns: 1fr 1fr;
             border-bottom: 1px solid var(--border);
         }
-        .stat-row:last-child { border-bottom: none; }
-        .stat-row.price-row { grid-template-columns: 58px 1fr 1fr 52px; }
-        .stat-name {
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--muted);
-            line-height: 1.2;
+        .stat-pair:last-child { border-bottom: none; }
+        .stat-col {
+            padding: 11px 14px;
+            min-width: 0;
         }
-        .stat-cell { text-align: right; min-width: 0; }
-        .stat-tag {
+        .stat-col + .stat-col { border-left: 1px solid var(--border); }
+        .stat-label {
             display: block;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 600;
             color: #a0aec0;
-            margin-bottom: 2px;
+            margin-bottom: 5px;
+            letter-spacing: 0.02em;
         }
         .stat-num {
             display: block;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 700;
             color: #2d3748;
+            line-height: 1.2;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .stat-sub {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            margin-top: 3px;
+            line-height: 1.2;
         }
         .stat-num.hi { color: var(--accent); }
-        .stat-num.gain { color: var(--green); }
-        .stat-num.loss { color: var(--red); }
-        .stat-num.muted { color: var(--muted); font-weight: 600; }
+        .stat-sub.gain, .stat-num.gain { color: var(--green); }
+        .stat-sub.loss, .stat-num.loss { color: var(--red); }
+        .stat-num.muted, .stat-sub.muted { color: #a0aec0; font-weight: 600; }
         .asset-footer {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
             gap: 8px;
-            margin-top: 8px;
-            min-height: 22px;
+            margin-top: 10px;
+            min-height: 0;
         }
-        .asset-footer .buy-badge,
+        .asset-footer:empty { display: none; margin: 0; }
         .asset-footer .profit-badge { margin: 0; }
-        .asset-footer .asset-action { font-size: 13px; }
+        .asset-footer .asset-action { font-size: 14px; font-weight: 700; }
         .btn-card-gear {
             flex-shrink: 0;
             background: #f7fafc;
@@ -524,8 +529,8 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            margin-bottom: 8px;
-            padding: 10px 12px;
+            margin-bottom: 10px;
+            padding: 12px 14px;
             transition: box-shadow 0.15s;
         }
         .asset-card.drag-float {
@@ -1645,31 +1650,14 @@ function renderTierButtons(index, tierStatus, cost) {
 }
 
 function updateBuyBadge(card, buyAlerts, tierStatus, cost) {
-    const sellBadge = card.querySelector('.profit-badge');
-    const buyBadge = card.querySelector('.buy-badge');
-
-    if (sellBadge) {
-        if (showProfitTaking() && cost > 0 && tierStatus.activeTier) {
-            const t = tierStatus.activeTier;
-            sellBadge.textContent = t.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${t.index + 1}/3`;
-            sellBadge.style.display = '';
-        } else {
-            sellBadge.style.display = 'none';
-        }
-    }
-
-    if (buyBadge) {
-        const rebalance = buyAlerts.find(a => a.type === 'rebalance');
-        const dip = buyAlerts.find(a => a.type === 'dip');
-        if (rebalance) {
-            buyBadge.textContent = `🔵 ซื้อ $${fmt(rebalance.amount, 0)}`;
-            buyBadge.style.display = '';
-        } else if (dip) {
-            buyBadge.textContent = `🔵 Dip −${dip.dropFromPeak.toFixed(0)}%`;
-            buyBadge.style.display = '';
-        } else {
-            buyBadge.style.display = 'none';
-        }
+    const sellBadge = card.querySelector('.asset-footer .profit-badge');
+    if (!sellBadge) return;
+    if (showProfitTaking() && cost > 0 && tierStatus.activeTier) {
+        const t = tierStatus.activeTier;
+        sellBadge.textContent = t.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${t.index + 1}/3`;
+        sellBadge.style.display = '';
+    } else {
+        sellBadge.style.display = 'none';
     }
 }
 
@@ -1708,13 +1696,18 @@ function recalculate() {
         const plEl = card.querySelector('.asset-pl-pct');
         if (plEl) {
             plEl.textContent = pl.text;
-            plEl.className = 'stat-num asset-pl-pct ' + pl.cls;
+            plEl.className = 'stat-sub asset-pl-pct ' + pl.cls;
         }
 
+        const showSellBadge = showProfitTaking() && cost > 0 && tierStatus.activeTier;
+        const footer = card.querySelector('.asset-footer');
         const actionEl = card.querySelector('.asset-footer .asset-action');
+        const showFooter = showSellBadge || action.cls !== 'hold';
+        if (footer) footer.style.display = showFooter ? '' : 'none';
         if (actionEl) {
             actionEl.className = 'asset-action ' + action.cls;
             actionEl.innerHTML = action.text;
+            actionEl.style.display = action.cls !== 'hold' ? '' : 'none';
         }
         updateBuyBadge(card, buyAlerts, tierStatus, cost);
     });
@@ -1795,41 +1788,35 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct) {
     const costCls = asset.avgCost > 0 ? '' : ' muted';
     return `
             <div class="asset-stats">
-                <div class="stat-row">
-                    <div class="stat-name">สัดส่วน</div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">เป้า</span>
+                <div class="stat-pair">
+                    <div class="stat-col">
+                        <span class="stat-label">สัดส่วน · เป้า</span>
                         <span class="stat-num asset-target-pct">${asset.target || 0}%</span>
                     </div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">จริง</span>
+                    <div class="stat-col">
+                        <span class="stat-label">สัดส่วน · จริง</span>
                         <span class="stat-num asset-pct hi">${curPct.toFixed(1)}%</span>
                     </div>
                 </div>
-                <div class="stat-row">
-                    <div class="stat-name">มูลค่า</div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">เป้า</span>
+                <div class="stat-pair">
+                    <div class="stat-col">
+                        <span class="stat-label">มูลค่า · เป้า</span>
                         <span class="stat-num asset-ideal">$${fmt(ideal, 0)}</span>
                     </div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">จริง</span>
+                    <div class="stat-col">
+                        <span class="stat-label">มูลค่า · จริง</span>
                         <span class="stat-num asset-value hi">$${fmt(asset.value, 0)}</span>
                     </div>
                 </div>
-                <div class="stat-row price-row">
-                    <div class="stat-name">ราคา</div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">ทุน</span>
+                <div class="stat-pair">
+                    <div class="stat-col">
+                        <span class="stat-label">ราคา · ทุน</span>
                         <span class="stat-num asset-cost${costCls}">${costText}</span>
                     </div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">ปัจจุบัน</span>
+                    <div class="stat-col">
+                        <span class="stat-label">ราคา · ปัจจุบัน</span>
                         <span class="stat-num asset-price hi">${priceText}</span>
-                    </div>
-                    <div class="stat-cell">
-                        <span class="stat-tag">P/L</span>
-                        <span class="stat-num asset-pl-pct ${pl.cls}">${pl.text}</span>
+                        <span class="stat-sub asset-pl-pct ${pl.cls}">${pl.text}</span>
                     </div>
                 </div>
             </div>`;
@@ -1846,12 +1833,7 @@ function appendAssetCard(list, payload) {
     const sellBadgeText = showSellBadge
         ? (tierStatus.activeTier.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${tierStatus.activeTier.index + 1}/3`)
         : '';
-    const rebalanceBuy = buyAlerts.find(a => a.type === 'rebalance');
-    const dipBuy = buyAlerts.find(a => a.type === 'dip');
-    const buyBadgeText = rebalanceBuy
-        ? `🔵 ซื้อ $${fmt(rebalanceBuy.amount, 0)}`
-        : (dipBuy ? `🔵 Dip −${dipBuy.dropFromPeak.toFixed(0)}%` : '');
-    const role = getAssetRole(asset.name);
+    const showFooter = showSellBadge || action.cls !== 'hold';
     const row = document.createElement('div');
     row.className = 'asset-card';
     row.dataset.index = index;
@@ -1865,12 +1847,9 @@ function appendAssetCard(list, payload) {
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
         </div>
         ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts)}
-        <div class="asset-footer">
-            <div class="asset-footer-badges">
-                <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
-                <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
-            </div>
-            <div class="asset-action ${action.cls}">${action.text}</div>
+        <div class="asset-footer" style="display:${showFooter ? '' : 'none'}">
+            <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
+            <div class="asset-action ${action.cls}" style="display:${action.cls !== 'hold' ? '' : 'none'}">${action.text}</div>
         </div>`;
     list.appendChild(row);
 }
