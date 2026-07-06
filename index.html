@@ -100,6 +100,23 @@
             display: none;
         }
         .btn-install.visible { display: block; }
+        .btn-refresh {
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            font-size: 14px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-refresh:disabled { opacity: 0.5; cursor: wait; }
+        .price-meta {
+            font-size: 10px;
+            color: var(--muted);
+        }
+        .price-meta.err { color: var(--red); }
+        .cell-value.price-live { color: var(--accent); font-size: 15px; }
 
         /* ── Summary bar ── */
         .summary {
@@ -132,6 +149,11 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+        .summary-sub {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 2px;
         }
         .summary-item.warn .summary-value { color: var(--red); }
         .summary-item.ok .summary-value { color: var(--green); }
@@ -323,6 +345,32 @@
             color: var(--muted);
             text-align: center;
             margin-top: 4px;
+        }
+
+        /* ── Strategy groups ── */
+        .group-header {
+            padding: 12px 4px 6px;
+        }
+        .group-header:first-child { padding-top: 4px; }
+        .group-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.3;
+        }
+        .group-meta {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 2px;
+            line-height: 1.35;
+        }
+        .asset-role {
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* ── Asset card — 2 lines ── */
@@ -528,7 +576,7 @@
             font-size: 16px;
             color: var(--primary);
         }
-        .sheet input {
+        .sheet input, .sheet select {
             width: 100%;
             padding: 12px;
             border: 1px solid var(--border);
@@ -575,6 +623,7 @@
             <h1>ReBalance Stock</h1>
             <p>กดค้าง ≡ เพื่อสลับลำดับ</p>
         </div>
+        <button class="btn-refresh" id="btn-refresh" type="button" title="อัปเดตราคา">↻</button>
         <button class="btn-install" id="btn-install" type="button">ติดตั้ง</button>
     </header>
 
@@ -584,8 +633,9 @@
             <div class="summary-value">$<span id="total-value">0</span></div>
         </div>
         <div class="summary-item" id="target-box">
-            <div class="summary-label">เป้าหมายรวม</div>
+            <div class="summary-label">เป้าหมายรวม (ETF+หุ้น)</div>
             <div class="summary-value" id="target-status">0%</div>
+            <div class="summary-sub" id="target-breakdown"></div>
         </div>
     </div>
 
@@ -594,7 +644,8 @@
         <button class="mode-btn" id="mode-stock" type="button" onclick="setMode('stock')">หุ้น · ทำกำไร</button>
     </div>
 
-    <div class="etf-note" id="etf-note">ETF ถือยาว — ปรับสัดส่วนอย่างเดียว ไม่ขายทำกำไร</div>
+    <div class="etf-note" id="etf-note">ETF ถือยาว — ปรับสัดส่วนอย่างเดียว · เป้า % รวมกับหุ้นให้ครบ 100%</div>
+    <div class="etf-note hidden" id="stock-note">หุ้น — ขายทำกำไรได้ · เป้า % รวมกับ ETF ให้ครบ 100%</div>
 
     <div class="profit-settings hidden" id="profit-settings">
         <div class="setting-title">ขายทำกำไร 3 ส่วน</div>
@@ -631,7 +682,12 @@
 <div class="overlay" id="add-overlay" onclick="closeAddSheet(event)">
     <div class="sheet" onclick="event.stopPropagation()">
         <h3>เพิ่มสินทรัพย์ใหม่</h3>
-        <input type="text" id="new-asset-name" placeholder="ชื่อ เช่น VOO, ACWI" autocomplete="off" inputmode="text">
+        <input type="text" id="new-asset-name" placeholder="ชื่อย่อ เช่น QQQI, MSFT" autocomplete="off" inputmode="text">
+        <select id="new-asset-group" class="hidden">
+            <option value="growth">ทัพเติบโตบลูชิพ (Tech Growth)</option>
+            <option value="alpha">ทัพเสริมสร้าง Alpha</option>
+            <option value="income">ทัพหลวงปั๊มปันผล (Income ETF)</option>
+        </select>
         <div class="sheet-actions">
             <button class="btn-cancel" type="button" onclick="closeAddSheet()">ยกเลิก</button>
             <button class="btn-confirm" type="button" onclick="addAsset()">เพิ่ม</button>
@@ -640,22 +696,172 @@
 </div>
 
 <script>
+const GROUP_ORDER = ['income', 'growth', 'alpha'];
+
+const GROUPS = {
+    income: {
+        label: '1. ทัพหลวงปั๊มปันผล',
+        hint: 'Income · ปันผล Reinvest ซ่อมพอร์ต',
+        kind: 'etf'
+    },
+    growth: {
+        label: '2. ทัพเติบโตบลูชิพ',
+        hint: 'Tech Growth · เสาหลักหุ้นรายตัว',
+        kind: 'stock'
+    },
+    alpha: {
+        label: '3. ทัพเสริมสร้าง Alpha',
+        hint: 'Growth / Tactical · จับจังหวะตามแนวรับ',
+        kind: 'stock'
+    }
+};
+
+const STRATEGY = {
+    QQQI: { target: 38, group: 'income', kind: 'etf', role: 'แกนปันผลรายเดือน · Reinvest' },
+    RDTE: { target: 7,  group: 'income', kind: 'etf', role: 'ปันผลรายสัปดาห์ · Yield สูง' },
+    MSFT: { target: 20, group: 'growth', kind: 'stock', role: 'เสาหลัก Tech · ปรับฐานน้อย' },
+    AVGO: { target: 15, group: 'growth', kind: 'stock', role: 'หุ้นเติบโตระยะยาว' },
+    META: { target: 12, group: 'alpha',  kind: 'stock', role: 'FCF แข็ง · ซื้อตามส่วนลด' },
+    PLTR: { target: 8,  group: 'alpha',  kind: 'stock', role: 'ซิ่งพื้นฐานดี · จับจังหวะ' }
+};
+
 const defaultAssets = [
-    { name: 'QQQI', value: 3000, target: 33, cost: 0 },
-    { name: 'JEPQ', value: 1120, target: 12, cost: 0 },
-    { name: 'SMH',  value: 3500, target: 38, cost: 0 },
-    { name: 'IBIT', value: 1500, target: 17, cost: 0 }
+    { name: 'QQQI', kind: 'etf',   group: 'income', shares: 0, avgCost: 0, target: 38 },
+    { name: 'RDTE', kind: 'etf',   group: 'income', shares: 0, avgCost: 0, target: 7 },
+    { name: 'MSFT', kind: 'stock', group: 'growth', shares: 0, avgCost: 0, target: 20 },
+    { name: 'AVGO', kind: 'stock', group: 'growth', shares: 0, avgCost: 0, target: 15 },
+    { name: 'META', kind: 'stock', group: 'alpha',  shares: 0, avgCost: 0, target: 12 },
+    { name: 'PLTR', kind: 'stock', group: 'alpha',  shares: 0, avgCost: 0, target: 8 }
 ];
 
+const ETF_SYMBOLS = new Set(['QQQI', 'RDTE', 'JEPQ', 'SMH', 'IBIT', 'VOO', 'SPY', 'QQQ', 'VTI', 'ACWI']);
+
+function inferKind(name) {
+    return ETF_SYMBOLS.has(String(name).toUpperCase()) ? 'etf' : 'stock';
+}
+
+function inferGroup(name, kind) {
+    const s = STRATEGY[name];
+    if (s) return s.group;
+    return kind === 'etf' ? 'income' : 'alpha';
+}
+
+function getAssetRole(name) {
+    return STRATEGY[name]?.role || '';
+}
+
+function mergeDefaultPortfolio(list) {
+    const names = new Set(list.map(a => a.name));
+    defaultAssets.forEach(d => {
+        if (!names.has(d.name)) {
+            list.push({ ...d, peakValue: 0, tiersDone: [false, false, false] });
+        }
+    });
+    return list;
+}
+
+function applyStrategyMigration(list) {
+    if (localStorage.getItem('strategyTargets') === '2') return list;
+    list.forEach(a => {
+        const s = STRATEGY[a.name];
+        if (s) {
+            a.target = s.target;
+            a.group = s.group;
+            a.kind = s.kind;
+        } else if (!a.group) {
+            a.group = inferGroup(a.name, a.kind || inferKind(a.name));
+        }
+    });
+    localStorage.setItem('strategyTargets', '2');
+    return list;
+}
+
+function sortPortfolioByGroup() {
+    myPortfolio.sort((a, b) => {
+        const ga = GROUP_ORDER.indexOf(a.group || inferGroup(a.name, a.kind));
+        const gb = GROUP_ORDER.indexOf(b.group || inferGroup(b.name, b.kind));
+        return ga - gb || a.name.localeCompare(b.name);
+    });
+}
+
+let priceCache = {};
+let priceFetching = false;
+
 let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || defaultAssets;
-myPortfolio = myPortfolio.map(a => ({
-    cost: 0,
-    peakValue: 0,
-    tiersDone: [false, false, false],
-    ...a,
-    tiersDone: a.tiersDone || [false, false, false],
-    peakValue: a.peakValue || 0
-}));
+myPortfolio = mergeDefaultPortfolio(myPortfolio);
+myPortfolio = applyStrategyMigration(myPortfolio);
+myPortfolio = myPortfolio.map(a => {
+    const kind = a.kind || inferKind(a.name);
+    const item = {
+        name: a.name,
+        kind,
+        group: a.group || inferGroup(a.name, kind),
+        shares: a.shares ?? 0,
+        avgCost: a.avgCost ?? 0,
+        target: a.target ?? 0,
+        peakValue: a.peakValue || 0,
+        tiersDone: a.tiersDone || [false, false, false]
+    };
+    if ((!item.shares || item.shares === 0) && a.value > 0) item._legacyValue = a.value;
+    if ((!item.avgCost || item.avgCost === 0) && a.cost > 0 && item.shares > 0) {
+        item.avgCost = a.cost / item.shares;
+    }
+    return item;
+});
+sortPortfolioByGroup();
+
+function getPrice(symbol) {
+    return priceCache[symbol]?.price || 0;
+}
+
+function syncAssetValues() {
+    myPortfolio.forEach(a => {
+        const price = getPrice(a.name);
+        if (a._legacyValue && price > 0) {
+            a.shares = a._legacyValue / price;
+            delete a._legacyValue;
+        }
+        a.price = price;
+        a.value = (a.shares || 0) * price;
+        a.cost = (a.shares || 0) * (a.avgCost || 0);
+    });
+}
+
+async function fetchPrices(fullRender = false) {
+    if (priceFetching) return;
+    const symbols = myPortfolio.map(a => a.name).filter(Boolean);
+    if (!symbols.length) return;
+
+    priceFetching = true;
+    const btn = document.getElementById('btn-refresh');
+    if (btn) btn.disabled = true;
+
+    await Promise.all(symbols.map(async (symbol) => {
+        try {
+            const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
+            const data = await res.json();
+            if (res.ok && data.price) {
+                priceCache[symbol] = { price: data.price, at: Date.now() };
+            } else {
+                priceCache[symbol] = { price: priceCache[symbol]?.price || 0, error: true };
+            }
+        } catch {
+            priceCache[symbol] = { price: priceCache[symbol]?.price || 0, error: true };
+        }
+    }));
+
+    syncAssetValues();
+    priceFetching = false;
+    if (btn) btn.disabled = false;
+
+    if (fullRender || !document.querySelector('.asset-card')) {
+        renderAndCalculate();
+    } else {
+        recalculate();
+    }
+}
+
+document.getElementById('btn-refresh').addEventListener('click', () => fetchPrices());
 
 let etfMode = localStorage.getItem('etfMode') !== 'false';
 
@@ -671,6 +877,7 @@ function updateModeUI() {
     document.getElementById('mode-stock').classList.toggle('active', !etfMode);
     document.getElementById('profit-settings').classList.toggle('hidden', etfMode);
     document.getElementById('etf-note').classList.toggle('hidden', !etfMode);
+    document.getElementById('stock-note').classList.toggle('hidden', etfMode);
 }
 
 updateModeUI();
@@ -719,7 +926,39 @@ function renderTierSettings() {
     }).join('');
 }
 
+function persistPortfolio() {
+    const data = myPortfolio.map(a => ({
+        name: a.name,
+        kind: a.kind || inferKind(a.name),
+        group: a.group || inferGroup(a.name, a.kind),
+        shares: a.shares || 0,
+        avgCost: a.avgCost || 0,
+        target: a.target || 0,
+        peakValue: a.peakValue || 0,
+        tiersDone: a.tiersDone || [false, false, false]
+    }));
+    localStorage.setItem('myPortfolio', JSON.stringify(data));
+}
+
+function getTargetByKind(kind) {
+    return myPortfolio.filter(a => a.kind === kind).reduce((s, a) => s + (a.target || 0), 0);
+}
+
+function getTargetByGroup(group) {
+    return myPortfolio.filter(a => (a.group || inferGroup(a.name, a.kind)) === group)
+        .reduce((s, a) => s + (a.target || 0), 0);
+}
+
+function getVisibleGroups() {
+    return GROUP_ORDER.filter(g => GROUPS[g].kind === (etfMode ? 'etf' : 'stock'));
+}
+
+function isVisibleAsset(asset) {
+    return etfMode ? asset.kind === 'etf' : asset.kind === 'stock';
+}
+
 function updatePeakValues() {
+    syncAssetValues();
     myPortfolio.forEach(a => {
         if (a.value > (a.peakValue || 0)) a.peakValue = a.value;
     });
@@ -865,8 +1104,13 @@ function updateSummary(totalValue, totalTarget, assets) {
 
     const targetBox = document.getElementById('target-box');
     const targetEl = document.getElementById('target-status');
+    const breakdownEl = document.getElementById('target-breakdown');
+    const incomeTarget = getTargetByGroup('income');
+    const growthTarget = getTargetByGroup('growth');
+    const alphaTarget = getTargetByGroup('alpha');
     targetBox.className = 'summary-item' + (totalTarget === 100 ? ' ok' : ' warn');
     targetEl.textContent = totalTarget + '%' + (totalTarget !== 100 ? ' ⚠' : ' ✓');
+    breakdownEl.textContent = `Income ${incomeTarget}% · Growth ${growthTarget}% · Alpha ${alphaTarget}%`;
 
     const summaryEl = document.getElementById('rebalance-summary');
     const textEl = document.getElementById('rebalance-text');
@@ -885,7 +1129,7 @@ function updateSummary(totalValue, totalTarget, assets) {
             }
         });
 
-        if (!etfMode && cost > 0 && tierStatus.activeTier) {
+        if (!etfMode && asset.kind === 'stock' && cost > 0 && tierStatus.activeTier) {
             const t = tierStatus.activeTier;
             if (t.type === 'trailing') {
                 takeProfits.push(`${asset.name} Trailing −${t.dropFromPeak.toFixed(0)}% จาก $${fmt(t.peak, 0)} → ขาย $${fmt(t.sellAmount, 0)} (${t.remaining}% ที่เหลือ)`);
@@ -991,10 +1235,24 @@ function updateTierUI(card, index, tierStatus, cost, profit, profitPct, buyAlert
 function recalculate() {
     const { totalValue, totalTarget, assets } = computePortfolio();
     updateSummary(totalValue, totalTarget, assets);
+    updateGroupHeaders();
 
-    assets.forEach(({ index, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts }) => {
+    assets.forEach(({ index, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts, asset }) => {
         const card = document.querySelector(`.asset-card[data-index="${index}"]`);
         if (!card) return;
+        const price = getPrice(asset.name);
+        const priceEl = card.querySelector('.asset-price');
+        if (priceEl) {
+            if (price > 0) {
+                priceEl.className = 'cell-value asset-price price-live';
+                priceEl.textContent = '$' + fmt(price, 2);
+            } else {
+                priceEl.className = 'cell-value asset-price price-meta err';
+                priceEl.textContent = priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…';
+            }
+        }
+        const valEl = card.querySelector('.asset-value');
+        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
         card.querySelector('.asset-pct').textContent = curPct.toFixed(1) + '%';
         card.querySelector('.asset-ideal').textContent = '$' + fmt(ideal, 0);
         const actionEl = card.querySelector('.asset-action');
@@ -1003,88 +1261,152 @@ function recalculate() {
         updateTierUI(card, index, tierStatus, cost, profit, profitPct, buyAlerts);
     });
 
-    localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
+    persistPortfolio();
 }
 
-function renderAndCalculate() {
-    const list = document.getElementById('assets-list');
-    list.innerHTML = '';
-
-    const { totalValue, totalTarget, assets } = computePortfolio();
-    updateSummary(totalValue, totalTarget, assets);
-
-    if (myPortfolio.length === 0) {
-        list.innerHTML = '<div class="empty-state">ยังไม่มีสินทรัพย์<br>กดปุ่มด้านล่างเพื่อเพิ่ม</div>';
-        localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
-        return;
-    }
-
-    assets.forEach(({ index, asset, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts }) => {
-        const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
-        const showSellBadge = !etfMode && cost > 0 && tierStatus.activeTier;
-        const sellBadgeText = showSellBadge
-            ? (tierStatus.activeTier.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${tierStatus.activeTier.index + 1}/3`)
-            : '';
-        const rebalanceBuy = buyAlerts.find(a => a.type === 'rebalance');
-        const dipBuy = buyAlerts.find(a => a.type === 'dip');
-        const buyBadgeText = rebalanceBuy
-            ? `🔵 ซื้อ $${fmt(rebalanceBuy.amount, 0)}`
-            : (dipBuy ? `🔵 Dip −${dipBuy.dropFromPeak.toFixed(0)}%` : '');
-        const row = document.createElement('div');
-        row.className = 'asset-card';
-        row.dataset.index = index;
-        row.innerHTML = `
-            <div class="asset-header">
-                <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
-                <div class="asset-badge">${asset.name.slice(0, 4)}</div>
-                <div class="asset-name">${asset.name}</div>
-                <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
-                <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
-                <div class="asset-action ${action.cls}">${action.text}</div>
-                <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
-            </div>
+function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts) {
+    const price = getPrice(asset.name);
+    const priceText = price > 0 ? '$' + fmt(price, 2) : (priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…');
+    const priceCls = price > 0 ? 'cell-value asset-price price-live' : 'cell-value asset-price price-meta err';
+    return `
             <div class="asset-grid">
                 <div class="cell">
-                    <span class="cell-label">มูลค่าจริง</span>
+                    <span class="cell-label">จำนวนหุ้น</span>
                     <input class="cell-input" type="number" inputmode="decimal"
-                        value="${asset.value || ''}" placeholder="0"
-                        oninput="updateAsset(${index}, 'value', this.value)">
+                        value="${asset.shares || ''}" placeholder="0" step="any"
+                        oninput="updateAsset(${index}, 'shares', this.value)">
+                </div>
+                <div class="cell">
+                    <span class="cell-label">ราคาปัจจุบัน</span>
+                    <span class="${priceCls} asset-price">${priceText}</span>
+                </div>
+                <div class="cell">
+                    <span class="cell-label">ต้นทุนเฉลี่ย/หุ้น</span>
+                    <input class="cell-input" type="number" inputmode="decimal"
+                        value="${asset.avgCost || ''}" placeholder="0" step="any"
+                        oninput="updateAsset(${index}, 'avgCost', this.value)">
+                </div>
+                <div class="cell">
+                    <span class="cell-label">มูลค่า</span>
+                    <span class="cell-value asset-value">$${fmt(asset.value, 0)}</span>
                 </div>
                 <div class="cell">
                     <span class="cell-label">สัดส่วนจริง</span>
                     <span class="cell-value asset-pct">${curPct.toFixed(1)}%</span>
                 </div>
                 <div class="cell">
-                    <span class="cell-label">มูลค่าเป้าหมาย</span>
-                    <span class="cell-value asset-ideal">$${fmt(ideal, 0)}</span>
-                </div>
-                <div class="cell">
-                    <span class="cell-label">สัดส่วนเป้าหมาย</span>
+                    <span class="cell-label">เป้าหมาย %</span>
                     <input class="cell-input" type="number" inputmode="decimal"
                         value="${asset.target || ''}" placeholder="0"
                         oninput="updateAsset(${index}, 'target', this.value)">
                 </div>
-                ${etfMode ? '' : `
                 <div class="cell">
-                    <span class="cell-label">ต้นทุน (ที่ซื้อ)</span>
-                    <input class="cell-input" type="number" inputmode="decimal"
-                        value="${cost || ''}" placeholder="0"
-                        oninput="updateAsset(${index}, 'cost', this.value)">
+                    <span class="cell-label">มูลค่าเป้าหมาย</span>
+                    <span class="cell-value asset-ideal">$${fmt(ideal, 0)}</span>
                 </div>
+                ${etfMode ? '' : `
                 <div class="cell">
                     <span class="cell-label">กำไร/ขาดทุน</span>
                     <span class="cell-value asset-profit ${profitFmt.cls}">${profitFmt.text}</span>
                 </div>`}
             </div>
             <div class="tier-status-wrap">${etfMode ? '' : renderTierButtons(index, tierStatus, cost)}</div>`;
-        list.appendChild(row);
+}
+
+function appendAssetCard(list, payload) {
+    const { index, asset, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts } = payload;
+    const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
+    const showSellBadge = !etfMode && cost > 0 && tierStatus.activeTier;
+    const sellBadgeText = showSellBadge
+        ? (tierStatus.activeTier.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${tierStatus.activeTier.index + 1}/3`)
+        : '';
+    const rebalanceBuy = buyAlerts.find(a => a.type === 'rebalance');
+    const dipBuy = buyAlerts.find(a => a.type === 'dip');
+    const buyBadgeText = rebalanceBuy
+        ? `🔵 ซื้อ $${fmt(rebalanceBuy.amount, 0)}`
+        : (dipBuy ? `🔵 Dip −${dipBuy.dropFromPeak.toFixed(0)}%` : '');
+    const role = getAssetRole(asset.name);
+    const row = document.createElement('div');
+    row.className = 'asset-card';
+    row.dataset.index = index;
+    row.innerHTML = `
+        <div class="asset-header">
+            <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
+            <div class="asset-badge">${asset.name.slice(0, 4)}</div>
+            <div class="asset-name-wrap" style="flex:1;min-width:0">
+                <div class="asset-name">${asset.name}</div>
+                ${role ? `<div class="asset-role">${role}</div>` : ''}
+            </div>
+            <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
+            <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
+            <div class="asset-action ${action.cls}">${action.text}</div>
+            <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
+        </div>
+        ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts)}`;
+    list.appendChild(row);
+}
+
+function renderGroupHeader(list, groupId, groupAssets) {
+    const g = GROUPS[groupId];
+    const groupTarget = getTargetByGroup(groupId);
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.dataset.group = groupId;
+    header.innerHTML = `
+        <div class="group-title">${g.label} <span class="group-target" style="font-weight:600;color:var(--accent)">(${groupTarget}%)</span></div>
+        <div class="group-meta">${g.hint}</div>`;
+    list.appendChild(header);
+    groupAssets.forEach(item => appendAssetCard(list, item));
+}
+
+function updateGroupHeaders() {
+    document.querySelectorAll('.group-header').forEach(el => {
+        const groupId = el.dataset.group;
+        if (!groupId) return;
+        const targetEl = el.querySelector('.group-target');
+        if (targetEl) targetEl.textContent = `(${getTargetByGroup(groupId)}%)`;
+    });
+}
+
+function renderAndCalculate() {
+    const list = document.getElementById('assets-list');
+    list.innerHTML = '';
+
+    syncAssetValues();
+    const { totalValue, totalTarget, assets } = computePortfolio();
+    updateSummary(totalValue, totalTarget, assets);
+
+    const visible = assets.filter(({ asset }) => isVisibleAsset(asset));
+
+    const visibleGroups = getVisibleGroups();
+    let rendered = 0;
+
+    visibleGroups.forEach(groupId => {
+        const groupAssets = visible.filter(({ asset }) => (asset.group || inferGroup(asset.name, asset.kind)) === groupId);
+        if (!groupAssets.length) return;
+        renderGroupHeader(list, groupId, groupAssets);
+        rendered += groupAssets.length;
     });
 
-    localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
+    const uncategorized = visible.filter(({ asset }) => !visibleGroups.includes(asset.group || inferGroup(asset.name, asset.kind)));
+    if (uncategorized.length) {
+        uncategorized.forEach(item => appendAssetCard(list, item));
+        rendered += uncategorized.length;
+    }
+
+    if (rendered === 0) {
+        const label = etfMode ? 'ETF' : 'หุ้น';
+        list.innerHTML = `<div class="empty-state">ยังไม่มี${label}ในพอร์ต<br>กดปุ่มด้านล่างเพื่อเพิ่ม</div>`;
+        persistPortfolio();
+        return;
+    }
+
+    persistPortfolio();
 }
 
 function updateAsset(index, field, val) {
     myPortfolio[index][field] = parseFloat(val) || 0;
+    syncAssetValues();
     recalculate();
 }
 
@@ -1098,6 +1420,19 @@ function deleteAsset(index) {
 function openAddSheet() {
     document.getElementById('add-overlay').classList.add('open');
     document.getElementById('new-asset-name').value = '';
+    const groupEl = document.getElementById('new-asset-group');
+    groupEl.classList.remove('hidden');
+    if (etfMode) {
+        groupEl.value = 'income';
+        groupEl.querySelector('option[value="growth"]').disabled = true;
+        groupEl.querySelector('option[value="alpha"]').disabled = true;
+        groupEl.querySelector('option[value="income"]').disabled = false;
+    } else {
+        groupEl.querySelector('option[value="income"]').disabled = true;
+        groupEl.querySelector('option[value="growth"]').disabled = false;
+        groupEl.querySelector('option[value="alpha"]').disabled = false;
+        if (groupEl.value === 'income') groupEl.value = 'growth';
+    }
     setTimeout(() => document.getElementById('new-asset-name').focus(), 100);
 }
 
@@ -1109,9 +1444,17 @@ function closeAddSheet(e) {
 function addAsset() {
     const name = document.getElementById('new-asset-name').value.trim().toUpperCase();
     if (!name) return;
-    myPortfolio.push({ name, value: 0, target: 0, cost: 0, peakValue: 0, tiersDone: [false, false, false] });
+    const group = document.getElementById('new-asset-group').value;
+    const kind = GROUPS[group]?.kind || (etfMode ? 'etf' : 'stock');
+    myPortfolio.push({
+        name, kind, group,
+        shares: 0, avgCost: 0, target: 0,
+        peakValue: 0, tiersDone: [false, false, false]
+    });
+    sortPortfolioByGroup();
     closeAddSheet();
     renderAndCalculate();
+    fetchPrices();
 }
 
 document.getElementById('new-asset-name').addEventListener('keydown', e => {
@@ -1169,7 +1512,11 @@ function finishDrag() {
     list.classList.remove('drag-active');
 
     const cards = [...list.querySelectorAll('.asset-card')];
-    myPortfolio = cards.map(c => myPortfolio[parseInt(c.dataset.index)]);
+    const kind = etfMode ? 'etf' : 'stock';
+    const reordered = cards.map(c => myPortfolio[parseInt(c.dataset.index)]);
+    const etfAssets = kind === 'etf' ? reordered : myPortfolio.filter(a => a.kind === 'etf');
+    const stockAssets = kind === 'stock' ? reordered : myPortfolio.filter(a => a.kind === 'stock');
+    myPortfolio = [...etfAssets, ...stockAssets];
     renderAndCalculate();
 }
 
@@ -1254,6 +1601,7 @@ if ('serviceWorker' in navigator) {
 }
 
 renderAndCalculate();
+fetchPrices(true);
 </script>
 </body>
 </html>
