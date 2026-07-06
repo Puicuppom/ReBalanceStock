@@ -1076,7 +1076,7 @@ async function fetchPrices(fullRender = false) {
 document.getElementById('btn-refresh').addEventListener('click', () => fetchPrices());
 
 /* ── Supabase cloud sync (no login) ── */
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let cloudSaving = false;
 let cloudSaveTimer = null;
 let realtimeChannel = null;
@@ -1180,7 +1180,7 @@ async function saveToCloud() {
     cloudSaving = true;
     setSyncStatus('syncing');
     const payload = getCloudPayload();
-    const { error } = await supabase.from('portfolios').upsert({
+    const { error } = await sb.from('portfolios').upsert({
         sync_key: SYNC_KEY,
         data: payload,
         updated_at: new Date().toISOString()
@@ -1197,7 +1197,7 @@ async function saveToCloud() {
 
 async function loadFromCloud() {
     setSyncStatus('syncing');
-    const { data, error } = await supabase
+    const { data, error } = await sb
         .from('portfolios')
         .select('data, updated_at')
         .eq('sync_key', SYNC_KEY)
@@ -1230,10 +1230,10 @@ async function loadFromCloud() {
 
 function setupRealtime() {
     if (realtimeChannel) {
-        supabase.removeChannel(realtimeChannel);
+        sb.removeChannel(realtimeChannel);
         realtimeChannel = null;
     }
-    realtimeChannel = supabase
+    realtimeChannel = sb
         .channel('portfolio-sync')
         .on('postgres_changes', {
             event: 'UPDATE',
