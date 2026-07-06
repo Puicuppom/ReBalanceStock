@@ -111,6 +111,17 @@
             cursor: pointer;
         }
         .btn-refresh:disabled { opacity: 0.5; cursor: wait; }
+        .btn-settings {
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            font-size: 16px;
+            line-height: 1;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
         .price-meta {
             font-size: 10px;
             color: var(--muted);
@@ -226,26 +237,22 @@
         .rebalance-box .buy-alert-line { color: #2b6cb0; font-weight: 600; }
         .rebalance-box .dip-line { color: var(--accent); font-weight: 600; }
 
-        /* ── Buy settings ── */
-        .buy-settings {
-            flex-shrink: 0;
-            padding: 0 14px 8px;
-            background: var(--surface);
+        /* ── Settings (in popup) ── */
+        .settings-section {
+            padding-bottom: 16px;
+            margin-bottom: 16px;
             border-bottom: 1px solid var(--border);
+        }
+        .settings-section:last-child {
+            padding-bottom: 0;
+            margin-bottom: 0;
+            border-bottom: none;
         }
         .buy-settings .setting-title { color: #2b6cb0; }
         .buy-item {
             background: #ebf8ff;
             border-radius: 10px;
-            padding: 8px 10px;
-        }
-
-        /* ── Take-profit settings — 3 tiers ── */
-        .profit-settings {
-            flex-shrink: 0;
-            padding: 0 14px 8px;
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
+            padding: 10px 12px;
         }
         .setting-title {
             font-size: 11px;
@@ -573,9 +580,62 @@
             padding: 20px 16px calc(20px + var(--safe-b));
         }
         .sheet h3 {
-            margin: 0 0 14px;
+            margin: 0;
             font-size: 16px;
             color: var(--primary);
+        }
+        .sheet-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .btn-sheet-close {
+            background: #f7fafc;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .settings-sheet {
+            max-height: 88dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        .settings-body {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .settings-sheet .setting-input {
+            padding: 8px 6px;
+            font-size: 15px;
+        }
+        .settings-sheet .tier-grid {
+            gap: 8px;
+        }
+        .settings-sheet .tier-item {
+            padding: 10px;
+        }
+        .btn-settings-done {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            flex-shrink: 0;
         }
         .sheet input, .sheet select {
             width: 100%;
@@ -624,6 +684,7 @@
             <h1>ReBalance Stock</h1>
             <p>กดค้าง ≡ เพื่อสลับลำดับ</p>
         </div>
+        <button class="btn-settings" id="btn-settings" type="button" title="ตั้งค่า" onclick="openSettingsSheet()">⚙</button>
         <button class="btn-refresh" id="btn-refresh" type="button" title="อัปเดตราคา">↻</button>
         <button class="btn-install" id="btn-install" type="button">ติดตั้ง</button>
     </header>
@@ -648,25 +709,6 @@
 
     <div class="squad-note" id="squad-note"></div>
 
-    <div class="profit-settings hidden" id="profit-settings">
-        <div class="setting-title">ขายทำกำไร 3 ส่วน</div>
-        <div class="setting-hint">ส่วน 1–2 ขายตามเป้ากำไร · ส่วน 3 Trailing stop ขายส่วนที่เหลือ</div>
-        <div class="tier-grid" id="tier-settings"></div>
-    </div>
-
-    <div class="buy-settings">
-        <div class="setting-title">แจ้งซื้อ</div>
-        <div class="setting-hint">ปรับสัดส่วนอัตโนมัติ · ซื้อเมื่อร่วงจากจุดสูงสุด</div>
-        <div class="buy-item">
-            <div class="tier-row">
-                <label style="width:auto">ร่วง</label>
-                <input class="setting-input" id="dip-buy-pct" type="number" inputmode="decimal" value="10"
-                    oninput="updateDipBuy(this.value)">
-                <span class="setting-suffix">% จากสูงสุด → แจ้งซื้อ</span>
-            </div>
-        </div>
-    </div>
-
     <div class="rebalance-summary hidden" id="rebalance-summary">
         <div class="rebalance-box" id="rebalance-text"></div>
     </div>
@@ -678,6 +720,35 @@
     <button class="fab" type="button" onclick="openAddSheet()">
         <span>＋</span> เพิ่มสินทรัพย์
     </button>
+</div>
+
+<div class="overlay" id="settings-overlay" onclick="closeSettingsSheet(event)">
+    <div class="sheet settings-sheet" onclick="event.stopPropagation()">
+        <div class="sheet-head">
+            <h3>ตั้งค่า</h3>
+            <button class="btn-sheet-close" type="button" aria-label="ปิด" onclick="closeSettingsSheet()">×</button>
+        </div>
+        <div class="settings-body">
+            <div class="settings-section buy-settings">
+                <div class="setting-title">แจ้งซื้อ</div>
+                <div class="setting-hint">ปรับสัดส่วนอัตโนมัติ · ซื้อเมื่อร่วงจากจุดสูงสุด</div>
+                <div class="buy-item">
+                    <div class="tier-row">
+                        <label style="width:auto">ร่วง</label>
+                        <input class="setting-input" id="dip-buy-pct" type="number" inputmode="decimal" value="10"
+                            oninput="updateDipBuy(this.value)">
+                        <span class="setting-suffix">% จากสูงสุด → แจ้งซื้อ</span>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section profit-settings hidden" id="profit-settings">
+                <div class="setting-title">ขายทำกำไร 3 ส่วน</div>
+                <div class="setting-hint">ส่วน 1–2 ขายตามเป้ากำไร · ส่วน 3 Trailing stop ขายส่วนที่เหลือ<br><span style="color:var(--muted)">ใช้กับแท็บ Growth และ Alpha</span></div>
+                <div class="tier-grid" id="tier-settings"></div>
+            </div>
+        </div>
+        <button class="btn-settings-done" type="button" onclick="closeSettingsSheet()">เสร็จสิ้น</button>
+    </div>
 </div>
 
 <div class="overlay" id="add-overlay" onclick="closeAddSheet(event)">
@@ -893,7 +964,16 @@ function updateTabUI() {
     const squadPct = getTargetByGroup(activeTab);
     document.getElementById('squad-note').textContent =
         `${g.hint} · เป้าทัพนี้ ${squadPct}% · รวมทั้งพอร์ตต้องครบ 100%`;
+}
+
+function openSettingsSheet() {
     document.getElementById('profit-settings').classList.toggle('hidden', !showProfitTaking());
+    document.getElementById('settings-overlay').classList.add('open');
+}
+
+function closeSettingsSheet(e) {
+    if (e && e.target !== document.getElementById('settings-overlay')) return;
+    document.getElementById('settings-overlay').classList.remove('open');
 }
 
 updateTabUI();
