@@ -331,46 +331,9 @@
             color: var(--muted);
             flex-shrink: 0;
         }
-        .tier-status {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px dashed var(--border);
-        }
-        .tier-btn {
-            flex: 1;
-            padding: 6px 4px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: #f7fafc;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--muted);
-            cursor: pointer;
-            text-align: center;
-        }
-        .tier-btn.done {
-            background: var(--green-bg);
-            border-color: #9ae6b4;
-            color: var(--green);
-        }
-        .tier-btn.active {
-            background: #fffbeb;
-            border-color: #f6e05e;
-            color: #b7791f;
-        }
-        .tier-btn.active.trailing {
-            background: #fff5f5;
-            border-color: #feb2b2;
-            color: var(--red);
-        }
-        .peak-hint {
-            font-size: 10px;
-            color: var(--muted);
-            text-align: center;
-            margin-top: 4px;
-        }
+        .stat-num.advice { font-size: 13px; line-height: 1.35; }
+        .stat-num.advice.warn { color: #b7791f; }
+        .stat-num.advice.trail { color: var(--red); }
 
         /* ── Strategy groups ── */
         .group-header {
@@ -445,17 +408,6 @@
         .stat-sub.gain, .stat-num.gain { color: var(--green); }
         .stat-sub.loss, .stat-num.loss { color: var(--red); }
         .stat-num.muted, .stat-sub.muted { color: #a0aec0; font-weight: 600; }
-        .asset-footer {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 8px;
-            margin-top: 10px;
-            min-height: 0;
-        }
-        .asset-footer:empty { display: none; margin: 0; }
-        .asset-footer .profit-badge { margin: 0; }
-        .asset-footer .asset-action { font-size: 14px; font-weight: 700; }
         .btn-card-gear {
             flex-shrink: 0;
             background: #f7fafc;
@@ -902,7 +854,7 @@
                     <span class="settings-chevron">▼</span>
                 </button>
                 <div class="settings-panel hidden" id="profit-panel">
-                    <div class="setting-hint">ส่วน 1–2 ขายตามเป้ากำไร · ส่วน 3 Trailing stop ขายส่วนที่เหลือ</div>
+                    <div class="setting-hint">+15% แนะนำขาย 30% · +25% แนะนำขาย 60% · ร่วงจากสูงสุด Trailing ขายส่วนที่เหลือ</div>
                     <div class="tier-grid" id="tier-settings"></div>
                 </div>
             </div>
@@ -1075,8 +1027,6 @@ async function fetchPrices(fullRender = false) {
     if (!symbols.length) return;
 
     priceFetching = true;
-    const btn = document.getElementById('btn-refresh');
-    if (btn) btn.disabled = true;
 
     await Promise.all(symbols.map(async (symbol) => {
         try {
@@ -1094,7 +1044,6 @@ async function fetchPrices(fullRender = false) {
 
     syncAssetValues();
     priceFetching = false;
-    if (btn) btn.disabled = false;
 
     if (fullRender || !document.querySelector('.asset-card')) {
         renderAndCalculate();
@@ -1202,13 +1151,14 @@ function scheduleCloudSave() {
 async function saveToCloud() {
     if (cloudSaving) return;
     cloudSaving = true;
-    setSyncStatus('syncing');
+    const syncDelay = setTimeout(() => setSyncStatus('syncing'), 600);
     const payload = getCloudPayload();
     const { error } = await sb.from('portfolios').upsert({
         sync_key: SYNC_KEY,
         data: payload,
         updated_at: new Date().toISOString()
     }, { onConflict: 'sync_key' });
+    clearTimeout(syncDelay);
     cloudSaving = false;
     if (error) {
         console.warn('cloud save', error);
@@ -1265,10 +1215,18 @@ function setupRealtime() {
             table: 'portfolios',
             filter: 'sync_key=eq.' + SYNC_KEY
         }, payload => {
-            if (cloudSaving || !payload.new?.data) return;
-            applyCloudData(payload.new.data);
-            renderAndCalculate();
-            fetchPrices();
+            if (!payload.new?.data) return;
+            const cloud = payload.new.data;
+            const incomingAt = cloud.updatedAt || 0;
+            const localUpdated = parseInt(localStorage.getItem('localUpdatedAt') || '0', 10);
+            if (incomingAt <= localUpdated) return;
+            applyCloudData(cloud);
+            if (document.querySelector('.asset-card')) {
+                syncAssetValues();
+                recalculate();
+            } else {
+                renderAndCalculate();
+            }
             setSyncStatus('synced');
         })
         .subscribe();
@@ -1426,49 +1384,53 @@ function updatePeakValues() {
     });
 }
 
-function getRemainingPct(asset) {
-    const done = asset.tiersDone || [false, false, false];
-    let sold = 0;
-    for (let i = 0; i < 2; i++) {
-        if (done[i]) sold += profitTiers[i].sellPct || 0;
-    }
-    return Math.max(0, 100 - sold);
-}
+function getProfitAdvice(asset, profitPct, cost) {
+    if (!cost || cost <= 0 || getAssetGroup(asset) === 'income') return null;
 
-function getTierStatus(asset, profitPct) {
-    const done = asset.tiersDone || [false, false, false];
+    const t1 = profitTiers[0];
+    const t2 = profitTiers[1];
+    const t3 = profitTiers[2];
     const peak = asset.peakValue || asset.value || 0;
     const dropFromPeak = peak > 0 ? ((peak - asset.value) / peak) * 100 : 0;
-    let activeTier = null;
+    const peakProfitPct = ((peak - cost) / cost) * 100;
+    const cumulative2 = (t1.sellPct || 0) + (t2.sellPct || 0);
+    const remaining = Math.max(0, 100 - cumulative2);
 
-    for (let i = 0; i < 2; i++) {
-        if (!done[i] && profitPct >= (profitTiers[i].profitPct || 0)) {
-            activeTier = {
-                index: i,
-                type: 'profit',
-                sellPct: profitTiers[i].sellPct,
-                sellAmount: asset.value * ((profitTiers[i].sellPct || 0) / 100)
-            };
-            break;
-        }
+    if (peakProfitPct >= (t2.profitPct || 0) && profitPct > 0
+        && dropFromPeak >= (t3.trailingPct || 10) && remaining > 0) {
+        return {
+            type: 'trailing',
+            sellPct: remaining,
+            sellAmount: asset.value * (remaining / 100),
+            text: `แนะนำขาย ${remaining}%`,
+            sub: `Trailing −${dropFromPeak.toFixed(0)}% · $${fmt(asset.value * (remaining / 100), 0)}`
+        };
     }
 
-    if (!activeTier && !done[2] && done[0] && done[1]) {
-        const trailingPct = profitTiers[2].trailingPct || 10;
-        const remaining = getRemainingPct(asset);
-        if (dropFromPeak >= trailingPct && profitPct > 0 && remaining > 0) {
-            activeTier = {
-                index: 2,
-                type: 'trailing',
-                dropFromPeak,
-                peak,
-                remaining,
-                sellAmount: asset.value * (remaining / 100)
-            };
-        }
+    if (profitPct >= (t2.profitPct || 0)) {
+        return {
+            type: 'profit',
+            tier: 2,
+            sellPct: cumulative2,
+            sellAmount: asset.value * (cumulative2 / 100),
+            text: `แนะนำขาย ${cumulative2}%`,
+            sub: `$${fmt(asset.value * (cumulative2 / 100), 0)}`
+        };
     }
 
-    return { done, activeTier, peak, dropFromPeak, remaining: getRemainingPct(asset) };
+    if (profitPct >= (t1.profitPct || 0)) {
+        const pct = t1.sellPct || 0;
+        return {
+            type: 'profit',
+            tier: 1,
+            sellPct: pct,
+            sellAmount: asset.value * (pct / 100),
+            text: `แนะนำขาย ${pct}%`,
+            sub: `$${fmt(asset.value * (pct / 100), 0)}`
+        };
+    }
+
+    return null;
 }
 
 function updateTier(index, field, val) {
@@ -1478,11 +1440,6 @@ function updateTier(index, field, val) {
     recalculate();
 }
 
-function toggleTierDone(assetIndex, tierIndex) {
-    if (!myPortfolio[assetIndex].tiersDone) myPortfolio[assetIndex].tiersDone = [false, false, false];
-    myPortfolio[assetIndex].tiersDone[tierIndex] = !myPortfolio[assetIndex].tiersDone[tierIndex];
-    recalculate();
-}
 
 renderTierSettings();
 
@@ -1531,8 +1488,8 @@ function fmt(n, dec = 2) {
 }
 
 function getAction(diff) {
-    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ<br>$${fmt(diff, 0)}` };
-    if (diff < -0.01) return { cls: 'sell', text: `ขาย<br>$${fmt(Math.abs(diff), 0)}` };
+    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ $${fmt(diff, 0)}` };
+    if (diff < -0.01) return { cls: 'sell', text: `ขาย $${fmt(Math.abs(diff), 0)}` };
     return { cls: 'hold', text: 'สมดุล' };
 }
 
@@ -1551,9 +1508,9 @@ function computePortfolio() {
         const cost = asset.cost || 0;
         const profit = cost > 0 ? asset.value - cost : 0;
         const profitPct = cost > 0 ? (profit / cost) * 100 : 0;
-        const tierStatus = getTierStatus(asset, profitPct);
+        const profitAdvice = getProfitAdvice(asset, profitPct, cost);
         const buyAlerts = getBuyAlerts(asset, diff, curPct);
-        return { index, asset, curPct, ideal, diff, action: getAction(diff), cost, profit, profitPct, tierStatus, buyAlerts };
+        return { index, asset, curPct, ideal, diff, action: getAction(diff), cost, profit, profitPct, profitAdvice, buyAlerts };
     });
 
     return { totalValue, totalTarget, assets };
@@ -1584,7 +1541,7 @@ function updateSummary(totalValue, totalTarget, assets) {
     const rebalanceBuys = [], dipBuys = [], sells = [], takeProfits = [];
     let totalBuy = 0, totalSell = 0;
 
-    assets.forEach(({ asset, diff, profitPct, tierStatus, cost, buyAlerts }) => {
+    assets.forEach(({ asset, diff, profitPct, profitAdvice, cost, buyAlerts }) => {
         if (diff < -0.01) { sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}`); totalSell += Math.abs(diff); }
 
         buyAlerts.forEach(alert => {
@@ -1596,12 +1553,11 @@ function updateSummary(totalValue, totalTarget, assets) {
             }
         });
 
-        if (showProfitTaking() && getAssetGroup(asset) !== 'income' && cost > 0 && tierStatus.activeTier) {
-            const t = tierStatus.activeTier;
-            if (t.type === 'trailing') {
-                takeProfits.push(`${asset.name} Trailing −${t.dropFromPeak.toFixed(0)}% จาก $${fmt(t.peak, 0)} → ขาย $${fmt(t.sellAmount, 0)} (${t.remaining}% ที่เหลือ)`);
+        if (showProfitTaking() && profitAdvice) {
+            if (profitAdvice.type === 'trailing') {
+                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)}`);
             } else {
-                takeProfits.push(`${asset.name} ส่วน${t.index + 1} +${profitPct.toFixed(0)}% → ขาย $${fmt(t.sellAmount, 0)} (${t.sellPct}%)`);
+                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)} (+${profitPct.toFixed(0)}%)`);
             }
         }
     });
@@ -1629,36 +1585,53 @@ function updateSummary(totalValue, totalTarget, assets) {
     }
 }
 
-function renderTierButtons(index, tierStatus, cost) {
-    if (!cost || !showProfitTaking()) return '';
-    const { done, activeTier } = tierStatus;
-    const btns = profitTiers.map((tier, i) => {
-        let cls = 'tier-btn';
-        if (done[i]) cls += ' done';
-        else if (activeTier && activeTier.index === i) {
-            cls += ' active';
-            if (activeTier.type === 'trailing') cls += ' trailing';
-        }
-        const label = i === 2 ? (done[i] ? 'T✓' : 'T') : (done[i] ? `${i + 1}✓` : `${i + 1}`);
-        return `<button class="${cls}" type="button" onclick="toggleTierDone(${index}, ${i})">${label}</button>`;
-    }).join('');
-    let hint = '';
-    if (done[0] && done[1] && !done[2] && tierStatus.peak > 0) {
-        hint = `<div class="peak-hint">สูงสุด $${fmt(tierStatus.peak, 0)} · ร่วง ${tierStatus.dropFromPeak.toFixed(1)}%</div>`;
+function renderAdviceRow(profitAdvice, action) {
+    const showProfit = showProfitTaking();
+    let leftNum = '—';
+    let leftSub = '';
+    let leftCls = 'muted advice';
+    if (showProfit && profitAdvice) {
+        leftNum = profitAdvice.text;
+        leftSub = profitAdvice.sub || '';
+        leftCls = 'advice ' + (profitAdvice.type === 'trailing' ? 'trail' : 'warn');
     }
-    return `<div class="tier-status">${btns}</div>${hint}`;
+    const rightCls = 'asset-rebalance ' + action.cls;
+    return `
+                <div class="stat-pair">
+                    <div class="stat-col">
+                        <span class="stat-label">ทำกำไร</span>
+                        <span class="stat-num asset-profit-advice ${leftCls}">${leftNum}</span>
+                        <span class="stat-sub asset-profit-usd ${leftCls}" style="display:${leftSub ? '' : 'none'}">${leftSub}</span>
+                    </div>
+                    <div class="stat-col">
+                        <span class="stat-label">ปรับสัดส่วน</span>
+                        <span class="stat-num ${rightCls}">${action.text}</span>
+                    </div>
+                </div>`;
 }
 
-function updateBuyBadge(card, buyAlerts, tierStatus, cost) {
-    const sellBadge = card.querySelector('.asset-footer .profit-badge');
-    if (!sellBadge) return;
-    if (showProfitTaking() && cost > 0 && tierStatus.activeTier) {
-        const t = tierStatus.activeTier;
-        sellBadge.textContent = t.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${t.index + 1}/3`;
-        sellBadge.style.display = '';
+function updateAdviceRow(card, profitAdvice, action) {
+    const leftNum = card.querySelector('.asset-profit-advice');
+    const leftSub = card.querySelector('.asset-profit-usd');
+    const rightEl = card.querySelector('.asset-rebalance');
+    if (!leftNum || !rightEl) return;
+
+    const showProfit = showProfitTaking();
+    if (showProfit && profitAdvice) {
+        leftNum.textContent = profitAdvice.text;
+        leftNum.className = 'stat-num asset-profit-advice advice ' + (profitAdvice.type === 'trailing' ? 'trail' : 'warn');
+        if (leftSub) {
+            leftSub.textContent = profitAdvice.sub || '';
+            leftSub.className = 'stat-sub asset-profit-usd advice ' + (profitAdvice.type === 'trailing' ? 'trail' : 'warn');
+            leftSub.style.display = '';
+        }
     } else {
-        sellBadge.style.display = 'none';
+        leftNum.textContent = '—';
+        leftNum.className = 'stat-num asset-profit-advice muted advice';
+        if (leftSub) leftSub.style.display = 'none';
     }
+    rightEl.textContent = action.text;
+    rightEl.className = 'stat-num asset-rebalance ' + action.cls;
 }
 
 function recalculate() {
@@ -1666,7 +1639,7 @@ function recalculate() {
     updateSummary(totalValue, totalTarget, assets);
     updateTabUI();
 
-    assets.forEach(({ index, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts, asset }) => {
+    assets.forEach(({ index, curPct, ideal, action, cost, profitPct, profitAdvice, asset }) => {
         const card = document.querySelector(`.asset-card[data-index="${index}"]`);
         if (!card) return;
 
@@ -1699,21 +1672,10 @@ function recalculate() {
             plEl.className = 'stat-sub asset-pl-pct ' + pl.cls;
         }
 
-        const showSellBadge = showProfitTaking() && cost > 0 && tierStatus.activeTier;
-        const footer = card.querySelector('.asset-footer');
-        const actionEl = card.querySelector('.asset-footer .asset-action');
-        const showFooter = showSellBadge || action.cls !== 'hold';
-        if (footer) footer.style.display = showFooter ? '' : 'none';
-        if (actionEl) {
-            actionEl.className = 'asset-action ' + action.cls;
-            actionEl.innerHTML = action.text;
-            actionEl.style.display = action.cls !== 'hold' ? '' : 'none';
-        }
-        updateBuyBadge(card, buyAlerts, tierStatus, cost);
+        updateAdviceRow(card, profitAdvice, action);
     });
 
     if (assetSheetIndex != null) refreshAssetSheet();
-    persistPortfolio();
 }
 
 function formatPlPct(profitPct, cost) {
@@ -1748,9 +1710,12 @@ function refreshAssetSheet() {
     document.getElementById('asset-sheet-body').innerHTML = renderAssetSheetBody(item);
 }
 
-function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tierStatus }) {
+function renderAssetSheetBody({ index, asset, cost, profit, profitPct, profitAdvice }) {
     const role = getAssetRole(asset.name);
     const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
+    const adviceHint = showProfitTaking() && profitAdvice
+        ? `<div class="setting-hint" style="margin-top:8px">${profitAdvice.text} · ${profitAdvice.sub || ''}</div>`
+        : '';
     return `
         ${role ? `<div class="setting-hint" style="margin-bottom:12px">${role}</div>` : ''}
         <div class="asset-sheet-grid">
@@ -1773,14 +1738,14 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tierStatu
             <div class="asset-sheet-field">
                 <label>กำไร/ขาดทุน</label>
                 <div class="buy-item"><span class="cell-value asset-profit ${profitFmt.cls}">${profitFmt.text}</span></div>
-            </div>
-            <div class="tier-status-wrap">${renderTierButtons(index, tierStatus, cost)}</div>` : ''}
+                ${adviceHint}
+            </div>` : ''}
         </div>
         <button class="btn-settings-done" type="button" style="margin-top:14px;background:var(--red)" onclick="deleteAssetFromSheet(${index})">ลบออกจากพอร์ต</button>
         <button class="btn-settings-done" type="button" onclick="closeAssetSheet()">เสร็จสิ้น</button>`;
 }
 
-function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct) {
+function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, profitAdvice, action) {
     const pl = formatPlPct(profitPct, cost);
     const price = getPrice(asset.name);
     const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
@@ -1819,21 +1784,17 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct) {
                         <span class="stat-sub asset-pl-pct ${pl.cls}">${pl.text}</span>
                     </div>
                 </div>
+                ${renderAdviceRow(profitAdvice, action)}
             </div>`;
 }
 
-function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts) {
-    return renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct);
+function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, profitAdvice, action) {
+    return renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, profitAdvice, action);
 }
 
 function appendAssetCard(list, payload) {
-    const { index, asset, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts } = payload;
+    const { index, asset, curPct, ideal, action, cost, profit, profitPct, profitAdvice } = payload;
     const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
-    const showSellBadge = showProfitTaking() && cost > 0 && tierStatus.activeTier;
-    const sellBadgeText = showSellBadge
-        ? (tierStatus.activeTier.type === 'trailing' ? '📉 Trailing' : `📈 ขาย ${tierStatus.activeTier.index + 1}/3`)
-        : '';
-    const showFooter = showSellBadge || action.cls !== 'hold';
     const row = document.createElement('div');
     row.className = 'asset-card';
     row.dataset.index = index;
@@ -1846,11 +1807,7 @@ function appendAssetCard(list, payload) {
             <button class="btn-card-gear" type="button" aria-label="ตั้งค่า ${asset.name}" onclick="openAssetSheet(${index})">⚙</button>
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
         </div>
-        ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts)}
-        <div class="asset-footer" style="display:${showFooter ? '' : 'none'}">
-            <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
-            <div class="asset-action ${action.cls}" style="display:${action.cls !== 'hold' ? '' : 'none'}">${action.text}</div>
-        </div>`;
+        ${renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, profitAdvice, action)}`;
     list.appendChild(row);
 }
 
@@ -1867,25 +1824,24 @@ function renderAndCalculate() {
     if (visible.length === 0) {
         const g = GROUPS[activeTab];
         list.innerHTML = `<div class="empty-state">ยังไม่มีสินทรัพย์ใน${g.label}<br>กดปุ่มด้านล่างเพื่อเพิ่ม</div>`;
-        persistPortfolio();
         return;
     }
 
     visible.forEach(item => appendAssetCard(list, item));
-
-    persistPortfolio();
 }
 
 function updateAsset(index, field, val) {
     myPortfolio[index][field] = parseFloat(val) || 0;
     syncAssetValues();
     recalculate();
+    persistPortfolio();
 }
 
 function deleteAssetFromSheet(index) {
     if (!confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) return;
     closeAssetSheet();
     myPortfolio.splice(index, 1);
+    persistPortfolio();
     renderAndCalculate();
 }
 
@@ -1893,6 +1849,7 @@ function deleteAsset(index) {
     if (confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) {
         if (assetSheetIndex === index) closeAssetSheet();
         myPortfolio.splice(index, 1);
+        persistPortfolio();
         renderAndCalculate();
     }
 }
@@ -1920,6 +1877,7 @@ function addAsset() {
     });
     sortPortfolioByGroup();
     closeAddSheet();
+    persistPortfolio();
     renderAndCalculate();
     fetchPrices();
 }
@@ -1986,6 +1944,7 @@ function finishDrag() {
         else rebuilt.push(...myPortfolio.filter(a => getAssetGroup(a) === g));
     });
     myPortfolio = rebuilt;
+    persistPortfolio();
     renderAndCalculate();
 }
 
@@ -2073,7 +2032,6 @@ async function bootstrap() {
     await initCloudSync();
     renderAndCalculate();
     fetchPrices(true);
-    setInterval(() => fetchPrices(), 10 * 60 * 1000);
 }
 
 bootstrap();
