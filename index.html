@@ -122,6 +122,33 @@
             border-radius: 8px;
             cursor: pointer;
         }
+        .btn-sync {
+            flex-shrink: 0;
+            position: relative;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            font-size: 14px;
+            line-height: 1;
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-sync.synced { border-color: #9ae6b4; }
+        .btn-sync.syncing { opacity: 0.7; }
+        .btn-sync.error { border-color: #feb2b2; }
+        .sync-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+        .btn-sync.synced .sync-dot { background: #48bb78; }
+        .btn-sync.syncing .sync-dot { background: #ecc94b; }
+        .btn-sync.error .sync-dot { background: #fc8181; }
         .price-meta {
             font-size: 10px;
             color: var(--muted);
@@ -778,6 +805,7 @@
             <h1>ReBalance Stock</h1>
             <p>กดค้าง ≡ เพื่อสลับลำดับ</p>
         </div>
+        <button class="btn-sync synced" id="btn-sync" type="button" title="ซิงค์อัตโนมัติทุกอุปกรณ์">☁<span class="sync-dot"></span></button>
         <button class="btn-settings" id="btn-settings" type="button" title="ตั้งค่า" onclick="openSettingsSheet()">⚙</button>
         <button class="btn-refresh" id="btn-refresh" type="button" title="อัปเดตราคา">↻</button>
         <button class="btn-install" id="btn-install" type="button">ติดตั้ง</button>
@@ -823,6 +851,12 @@
             <button class="btn-sheet-close" type="button" aria-label="ปิด" onclick="closeSettingsSheet()">×</button>
         </div>
         <div class="settings-body">
+            <div class="settings-section">
+                <div class="buy-item" style="margin-bottom:12px">
+                    <div class="setting-title" style="color:var(--accent)">☁ ซิงค์คลาวด์</div>
+                    <div class="setting-hint">บันทึกอัตโนมัติทุกอุปกรณ์ — ไม่ต้องล็อกอิน</div>
+                </div>
+            </div>
             <div class="settings-section" id="buy-settings-section">
                 <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('buy-panel')">
                     <span class="settings-toggle-text">แจ้งซื้อ</span>
@@ -868,7 +902,12 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL = 'https://fmbympgecspgqtnazrbm.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtYnltcGdlY3NwZ3F0bmF6cmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NDkwOTksImV4cCI6MjA2NjMyNTA5OX0.rqOrNDNRTF7WnDS6utTTKfFoNZKPiMZV_ttqYzYCaJs';
+const SYNC_KEY = 'rebalance-puicuppom-v1';
+
 const GROUP_ORDER = ['income', 'growth', 'alpha'];
 
 const GROUPS = {
@@ -1036,6 +1075,186 @@ async function fetchPrices(fullRender = false) {
 
 document.getElementById('btn-refresh').addEventListener('click', () => fetchPrices());
 
+/* ── Supabase cloud sync (no login) ── */
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let cloudSaving = false;
+let cloudSaveTimer = null;
+let realtimeChannel = null;
+
+function setSyncStatus(state) {
+    const btn = document.getElementById('btn-sync');
+    if (!btn) return;
+    btn.classList.remove('synced', 'syncing', 'error');
+    if (state) btn.classList.add(state);
+    const titles = {
+        synced: 'ซิงค์แล้ว — ทุกอุปกรณ์',
+        syncing: 'กำลังซิงค์…',
+        error: 'ซิงค์ไม่สำเร็จ',
+        '': 'ซิงค์อัตโนมัติ'
+    };
+    btn.title = titles[state] || titles[''];
+}
+
+function normalizePortfolioList(list, skipMigration = false) {
+    list = mergeDefaultPortfolio(list || []);
+    if (!skipMigration) list = applyStrategyMigration(list);
+    return list.map(a => {
+        const kind = a.kind || inferKind(a.name);
+        return {
+            name: a.name,
+            kind,
+            group: a.group || inferGroup(a.name, kind),
+            shares: a.shares ?? 0,
+            avgCost: a.avgCost ?? 0,
+            target: a.target ?? 0,
+            peakValue: a.peakValue || 0,
+            tiersDone: a.tiersDone || [false, false, false]
+        };
+    });
+}
+
+function applyCloudData(cloud) {
+    if (!cloud) return;
+    if (Array.isArray(cloud.portfolio)) {
+        myPortfolio = normalizePortfolioList(cloud.portfolio, true);
+        sortPortfolioByGroup();
+        localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
+    }
+    if (Array.isArray(cloud.profitTiers) && cloud.profitTiers.length === 3) {
+        profitTiers = cloud.profitTiers;
+        localStorage.setItem('profitTiers', JSON.stringify(profitTiers));
+        renderTierSettings();
+    }
+    if (typeof cloud.dipBuyPct === 'number') {
+        dipBuyPct = cloud.dipBuyPct;
+        localStorage.setItem('dipBuyPct', String(dipBuyPct));
+        const dipEl = document.getElementById('dip-buy-pct');
+        if (dipEl) dipEl.value = dipBuyPct;
+        updateBuyPanelSummary();
+    }
+    if (GROUP_ORDER.includes(cloud.activeTab)) {
+        activeTab = cloud.activeTab;
+        localStorage.setItem('activeTab', activeTab);
+        updateTabUI();
+    }
+    if (Array.isArray(cloud.expandedAssets)) {
+        expandedAssets.clear();
+        cloud.expandedAssets.forEach(n => expandedAssets.add(n));
+        localStorage.setItem('expandedAssets', JSON.stringify([...expandedAssets]));
+    }
+    if (cloud.strategyTargets) {
+        localStorage.setItem('strategyTargets', cloud.strategyTargets);
+    }
+    localStorage.setItem('localUpdatedAt', String(cloud.updatedAt || Date.now()));
+}
+
+function getCloudPayload() {
+    return {
+        version: 1,
+        portfolio: myPortfolio.map(a => ({
+            name: a.name,
+            kind: a.kind || inferKind(a.name),
+            group: a.group || inferGroup(a.name, a.kind),
+            shares: a.shares || 0,
+            avgCost: a.avgCost || 0,
+            target: a.target || 0,
+            peakValue: a.peakValue || 0,
+            tiersDone: a.tiersDone || [false, false, false]
+        })),
+        profitTiers,
+        dipBuyPct,
+        activeTab,
+        expandedAssets: [...expandedAssets],
+        strategyTargets: localStorage.getItem('strategyTargets') || '2',
+        updatedAt: Date.now()
+    };
+}
+
+function scheduleCloudSave() {
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(saveToCloud, 900);
+}
+
+async function saveToCloud() {
+    if (cloudSaving) return;
+    cloudSaving = true;
+    setSyncStatus('syncing');
+    const payload = getCloudPayload();
+    const { error } = await supabase.from('portfolios').upsert({
+        sync_key: SYNC_KEY,
+        data: payload,
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'sync_key' });
+    cloudSaving = false;
+    if (error) {
+        console.warn('cloud save', error);
+        setSyncStatus('error');
+    } else {
+        localStorage.setItem('localUpdatedAt', String(payload.updatedAt));
+        setSyncStatus('synced');
+    }
+}
+
+async function loadFromCloud() {
+    setSyncStatus('syncing');
+    const { data, error } = await supabase
+        .from('portfolios')
+        .select('data, updated_at')
+        .eq('sync_key', SYNC_KEY)
+        .maybeSingle();
+
+    if (error) {
+        console.warn('cloud load', error);
+        setSyncStatus('error');
+        return;
+    }
+
+    const localUpdated = parseInt(localStorage.getItem('localUpdatedAt') || '0', 10);
+    if (!data) {
+        await saveToCloud();
+        return;
+    }
+
+    const cloudUpdated = new Date(data.updated_at).getTime();
+    const cloud = data.data || {};
+    const cloudPayloadUpdated = cloud.updatedAt || 0;
+
+    if (cloudUpdated > localUpdated || cloudPayloadUpdated > localUpdated) {
+        applyCloudData(cloud);
+    } else if (localUpdated > cloudUpdated) {
+        await saveToCloud();
+    } else {
+        setSyncStatus('synced');
+    }
+}
+
+function setupRealtime() {
+    if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+    }
+    realtimeChannel = supabase
+        .channel('portfolio-sync')
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'portfolios',
+            filter: 'sync_key=eq.' + SYNC_KEY
+        }, payload => {
+            if (cloudSaving || !payload.new?.data) return;
+            applyCloudData(payload.new.data);
+            renderAndCalculate();
+            fetchPrices();
+            setSyncStatus('synced');
+        })
+        .subscribe();
+}
+
+async function initCloudSync() {
+    await loadFromCloud();
+    setupRealtime();
+}
+
 const TAB_LABELS = { income: 'ปันผล', growth: 'Growth', alpha: 'Alpha' };
 
 function loadActiveTab() {
@@ -1056,6 +1275,7 @@ function setTab(tab) {
     localStorage.setItem('activeTab', activeTab);
     updateTabUI();
     renderAndCalculate();
+    scheduleCloudSave();
 }
 
 function updateTabUI() {
@@ -1103,6 +1323,7 @@ function toggleAssetDetail(name) {
     else expandedAssets.add(name);
     localStorage.setItem('expandedAssets', JSON.stringify([...expandedAssets]));
     applyAssetExpandState(name);
+    scheduleCloudSave();
 }
 
 function applyAssetExpandState(name) {
@@ -1173,6 +1394,8 @@ function persistPortfolio() {
         tiersDone: a.tiersDone || [false, false, false]
     }));
     localStorage.setItem('myPortfolio', JSON.stringify(data));
+    localStorage.setItem('localUpdatedAt', String(Date.now()));
+    scheduleCloudSave();
 }
 
 function getTargetByKind(kind) {
@@ -1247,6 +1470,7 @@ function getTierStatus(asset, profitPct) {
 function updateTier(index, field, val) {
     profitTiers[index][field] = parseFloat(val) || 0;
     localStorage.setItem('profitTiers', JSON.stringify(profitTiers));
+    scheduleCloudSave();
     recalculate();
 }
 
@@ -1266,6 +1490,7 @@ function updateDipBuy(val) {
     dipBuyPct = parseFloat(val) || 0;
     localStorage.setItem('dipBuyPct', dipBuyPct);
     updateBuyPanelSummary();
+    scheduleCloudSave();
     recalculate();
 }
 
@@ -1812,8 +2037,14 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-renderAndCalculate();
-fetchPrices(true);
+async function bootstrap() {
+    await initCloudSync();
+    renderAndCalculate();
+    fetchPrices(true);
+    setInterval(() => fetchPrices(), 10 * 60 * 1000);
+}
+
+bootstrap();
 </script>
 </body>
 </html>
