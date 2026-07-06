@@ -238,16 +238,6 @@
         .rebalance-box .dip-line { color: var(--accent); font-weight: 600; }
 
         /* ── Settings (in popup) ── */
-        .settings-section {
-            padding-bottom: 16px;
-            margin-bottom: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-        .settings-section:last-child {
-            padding-bottom: 0;
-            margin-bottom: 0;
-            border-bottom: none;
-        }
         .buy-settings .setting-title { color: #2b6cb0; }
         .buy-item {
             background: #ebf8ff;
@@ -380,6 +370,110 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        /* ── Compact asset card ── */
+        .asset-compact {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .compact-stat {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-width: 0;
+        }
+        .compact-pct {
+            font-size: 15px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+        .compact-pct .asset-pct { color: var(--accent); }
+        .compact-target {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            margin-top: 2px;
+        }
+        .compact-input {
+            width: 42px;
+            padding: 2px 4px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .compact-shares {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+        }
+        .compact-shares .cell-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .btn-expand {
+            width: 100%;
+            padding: 6px 8px;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .asset-detail.hidden { display: none; }
+        .asset-detail {
+            margin-top: 6px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border);
+        }
+        .asset-detail .asset-grid { margin-bottom: 0; }
+
+        /* ── Collapsible settings ── */
+        .settings-section { padding-bottom: 0; margin-bottom: 10px; border-bottom: none; }
+        .settings-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #f7fafc;
+            cursor: pointer;
+            text-align: left;
+            font: inherit;
+        }
+        .settings-toggle-text {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .settings-toggle-meta {
+            font-size: 11px;
+            color: var(--muted);
+        }
+        .settings-chevron {
+            font-size: 10px;
+            color: var(--muted);
+            transition: transform 0.15s;
+        }
+        .settings-section.open .settings-chevron { transform: rotate(180deg); }
+        .settings-panel.hidden { display: none; }
+        .settings-panel { padding: 10px 2px 4px; }
 
         /* ── Asset card — 2 lines ── */
         .asset-card {
@@ -729,22 +823,34 @@
             <button class="btn-sheet-close" type="button" aria-label="ปิด" onclick="closeSettingsSheet()">×</button>
         </div>
         <div class="settings-body">
-            <div class="settings-section buy-settings">
-                <div class="setting-title">แจ้งซื้อ</div>
-                <div class="setting-hint">ปรับสัดส่วนอัตโนมัติ · ซื้อเมื่อร่วงจากจุดสูงสุด</div>
-                <div class="buy-item">
-                    <div class="tier-row">
-                        <label style="width:auto">ร่วง</label>
-                        <input class="setting-input" id="dip-buy-pct" type="number" inputmode="decimal" value="10"
-                            oninput="updateDipBuy(this.value)">
-                        <span class="setting-suffix">% จากสูงสุด → แจ้งซื้อ</span>
+            <div class="settings-section" id="buy-settings-section">
+                <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('buy-panel')">
+                    <span class="settings-toggle-text">แจ้งซื้อ</span>
+                    <span class="settings-toggle-meta" id="buy-panel-summary">ร่วง 10%</span>
+                    <span class="settings-chevron">▼</span>
+                </button>
+                <div class="settings-panel hidden" id="buy-panel">
+                    <div class="setting-hint">ปรับสัดส่วนอัตโนมัติ · ซื้อเมื่อร่วงจากจุดสูงสุด</div>
+                    <div class="buy-item">
+                        <div class="tier-row">
+                            <label style="width:auto">ร่วง</label>
+                            <input class="setting-input" id="dip-buy-pct" type="number" inputmode="decimal" value="10"
+                                oninput="updateDipBuy(this.value)">
+                            <span class="setting-suffix">% จากสูงสุด → แจ้งซื้อ</span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="settings-section profit-settings hidden" id="profit-settings">
-                <div class="setting-title">ขายทำกำไร 3 ส่วน</div>
-                <div class="setting-hint">ส่วน 1–2 ขายตามเป้ากำไร · ส่วน 3 Trailing stop ขายส่วนที่เหลือ<br><span style="color:var(--muted)">ใช้กับแท็บ Growth และ Alpha</span></div>
-                <div class="tier-grid" id="tier-settings"></div>
+            <div class="settings-section hidden" id="profit-settings-section">
+                <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('profit-panel')">
+                    <span class="settings-toggle-text">ขายทำกำไร 3 ส่วน</span>
+                    <span class="settings-toggle-meta">Growth / Alpha</span>
+                    <span class="settings-chevron">▼</span>
+                </button>
+                <div class="settings-panel hidden" id="profit-panel">
+                    <div class="setting-hint">ส่วน 1–2 ขายตามเป้ากำไร · ส่วน 3 Trailing stop ขายส่วนที่เหลือ</div>
+                    <div class="tier-grid" id="tier-settings"></div>
+                </div>
             </div>
         </div>
         <button class="btn-settings-done" type="button" onclick="closeSettingsSheet()">เสร็จสิ้น</button>
@@ -967,13 +1073,46 @@ function updateTabUI() {
 }
 
 function openSettingsSheet() {
-    document.getElementById('profit-settings').classList.toggle('hidden', !showProfitTaking());
+    document.getElementById('profit-settings-section').classList.toggle('hidden', !showProfitTaking());
     document.getElementById('settings-overlay').classList.add('open');
 }
 
 function closeSettingsSheet(e) {
     if (e && e.target !== document.getElementById('settings-overlay')) return;
     document.getElementById('settings-overlay').classList.remove('open');
+}
+
+function toggleSettingsPanel(id) {
+    const panel = document.getElementById(id);
+    const section = panel?.closest('.settings-section');
+    if (!panel || !section) return;
+    const willOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    section.classList.toggle('open', willOpen);
+}
+
+function updateBuyPanelSummary() {
+    const el = document.getElementById('buy-panel-summary');
+    if (el) el.textContent = `ร่วง ${dipBuyPct}%`;
+}
+
+const expandedAssets = new Set(JSON.parse(localStorage.getItem('expandedAssets') || '[]'));
+
+function toggleAssetDetail(name) {
+    if (expandedAssets.has(name)) expandedAssets.delete(name);
+    else expandedAssets.add(name);
+    localStorage.setItem('expandedAssets', JSON.stringify([...expandedAssets]));
+    applyAssetExpandState(name);
+}
+
+function applyAssetExpandState(name) {
+    const card = document.querySelector(`.asset-card[data-name="${name}"]`);
+    if (!card) return;
+    const open = expandedAssets.has(name);
+    const detail = card.querySelector('.asset-detail');
+    const btn = card.querySelector('.btn-expand');
+    if (detail) detail.classList.toggle('hidden', !open);
+    if (btn) btn.textContent = open ? 'ย่อ ▲' : 'รายละเอียด ▼';
 }
 
 updateTabUI();
@@ -1121,10 +1260,12 @@ renderTierSettings();
 
 let dipBuyPct = parseFloat(localStorage.getItem('dipBuyPct')) || 10;
 document.getElementById('dip-buy-pct').value = dipBuyPct;
+updateBuyPanelSummary();
 
 function updateDipBuy(val) {
     dipBuyPct = parseFloat(val) || 0;
     localStorage.setItem('dipBuyPct', dipBuyPct);
+    updateBuyPanelSummary();
     recalculate();
 }
 
@@ -1337,6 +1478,12 @@ function recalculate() {
     assets.forEach(({ index, curPct, ideal, action, cost, profit, profitPct, tierStatus, buyAlerts, asset }) => {
         const card = document.querySelector(`.asset-card[data-index="${index}"]`);
         if (!card) return;
+        const valEl = card.querySelector('.asset-value');
+        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
+        const pctEl = card.querySelector('.asset-pct');
+        if (pctEl) pctEl.textContent = curPct.toFixed(1);
+        const idealEl = card.querySelector('.asset-ideal');
+        if (idealEl) idealEl.textContent = '$' + fmt(ideal, 0);
         const price = getPrice(asset.name);
         const priceEl = card.querySelector('.asset-price');
         if (priceEl) {
@@ -1348,31 +1495,25 @@ function recalculate() {
                 priceEl.textContent = priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…';
             }
         }
-        const valEl = card.querySelector('.asset-value');
-        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
-        card.querySelector('.asset-pct').textContent = curPct.toFixed(1) + '%';
-        card.querySelector('.asset-ideal').textContent = '$' + fmt(ideal, 0);
         const actionEl = card.querySelector('.asset-action');
-        actionEl.className = 'asset-action ' + action.cls;
-        actionEl.innerHTML = action.text;
+        if (actionEl) {
+            actionEl.className = 'asset-action ' + action.cls;
+            actionEl.innerHTML = action.text;
+        }
         updateTierUI(card, index, tierStatus, cost, profit, profitPct, buyAlerts);
     });
 
     persistPortfolio();
 }
 
-function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts) {
+function renderAssetDetail(index, asset, ideal, profitFmt, cost, profit, profitPct, tierStatus) {
     const price = getPrice(asset.name);
     const priceText = price > 0 ? '$' + fmt(price, 2) : (priceCache[asset.name]?.error ? 'ไม่พบราคา' : '…');
     const priceCls = price > 0 ? 'cell-value asset-price price-live' : 'cell-value asset-price price-meta err';
+    const role = getAssetRole(asset.name);
     return `
+            ${role ? `<div class="asset-role" style="margin-bottom:8px">${role}</div>` : ''}
             <div class="asset-grid">
-                <div class="cell">
-                    <span class="cell-label">จำนวนหุ้น</span>
-                    <input class="cell-input" type="number" inputmode="decimal"
-                        value="${asset.shares || ''}" placeholder="0" step="any"
-                        oninput="updateAsset(${index}, 'shares', this.value)">
-                </div>
                 <div class="cell">
                     <span class="cell-label">ราคาปัจจุบัน</span>
                     <span class="${priceCls} asset-price">${priceText}</span>
@@ -1382,20 +1523,6 @@ function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, p
                     <input class="cell-input" type="number" inputmode="decimal"
                         value="${asset.avgCost || ''}" placeholder="0" step="any"
                         oninput="updateAsset(${index}, 'avgCost', this.value)">
-                </div>
-                <div class="cell">
-                    <span class="cell-label">มูลค่า</span>
-                    <span class="cell-value asset-value">$${fmt(asset.value, 0)}</span>
-                </div>
-                <div class="cell">
-                    <span class="cell-label">สัดส่วนจริง</span>
-                    <span class="cell-value asset-pct">${curPct.toFixed(1)}%</span>
-                </div>
-                <div class="cell">
-                    <span class="cell-label">เป้าหมาย %</span>
-                    <input class="cell-input" type="number" inputmode="decimal"
-                        value="${asset.target || ''}" placeholder="0"
-                        oninput="updateAsset(${index}, 'target', this.value)">
                 </div>
                 <div class="cell">
                     <span class="cell-label">มูลค่าเป้าหมาย</span>
@@ -1408,6 +1535,41 @@ function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, p
                 </div>` : ''}
             </div>
             <div class="tier-status-wrap">${showProfitTaking() ? renderTierButtons(index, tierStatus, cost) : ''}</div>`;
+}
+
+function renderAssetCard(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus) {
+    const expanded = expandedAssets.has(asset.name);
+    return `
+            <div class="asset-compact">
+                <div class="compact-stat">
+                    <span class="cell-label">สัดส่วน</span>
+                    <div class="compact-pct"><span class="asset-pct">${curPct.toFixed(1)}</span>%</div>
+                    <div class="compact-target">
+                        <span class="cell-label" style="margin:0">เป้า</span>
+                        <input class="compact-input asset-target" type="number" inputmode="decimal"
+                            value="${asset.target || ''}" placeholder="0"
+                            oninput="updateAsset(${index}, 'target', this.value)">%
+                    </div>
+                </div>
+                <div class="compact-stat">
+                    <span class="cell-label">มูลค่า</span>
+                    <span class="cell-value asset-value">$${fmt(asset.value, 0)}</span>
+                </div>
+            </div>
+            <div class="compact-shares">
+                <span class="cell-label">จำนวนหุ้น</span>
+                <input class="cell-input" type="number" inputmode="decimal"
+                    value="${asset.shares || ''}" placeholder="0" step="any"
+                    oninput="updateAsset(${index}, 'shares', this.value)">
+            </div>
+            <button type="button" class="btn-expand" onclick="toggleAssetDetail('${asset.name}')">${expanded ? 'ย่อ ▲' : 'รายละเอียด ▼'}</button>
+            <div class="asset-detail${expanded ? '' : ' hidden'}">
+                ${renderAssetDetail(index, asset, ideal, profitFmt, cost, profit, profitPct, tierStatus)}
+            </div>`;
+}
+
+function renderAssetGrid(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus, buyAlerts) {
+    return renderAssetCard(index, asset, curPct, ideal, profitFmt, cost, profit, profitPct, tierStatus);
 }
 
 function appendAssetCard(list, payload) {
@@ -1426,13 +1588,13 @@ function appendAssetCard(list, payload) {
     const row = document.createElement('div');
     row.className = 'asset-card';
     row.dataset.index = index;
+    row.dataset.name = asset.name;
     row.innerHTML = `
         <div class="asset-header">
             <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
             <div class="asset-badge">${asset.name.slice(0, 4)}</div>
             <div class="asset-name-wrap" style="flex:1;min-width:0">
                 <div class="asset-name">${asset.name}</div>
-                ${role ? `<div class="asset-role">${role}</div>` : ''}
             </div>
             <span class="buy-badge" style="display:${buyBadgeText ? '' : 'none'}">${buyBadgeText}</span>
             <span class="profit-badge" style="display:${showSellBadge ? '' : 'none'}">${sellBadgeText}</span>
