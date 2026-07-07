@@ -515,18 +515,20 @@
             margin-bottom: 8px;
         }
         .list-wrap.drag-active { touch-action: none; }
+        body.drag-active { user-select: none; overflow: hidden; }
         .drag-handle {
             flex-shrink: 0;
             color: var(--muted);
             font-size: 16px;
             line-height: 1;
-            padding: 3px 2px;
+            padding: 6px 4px;
             cursor: grab;
             user-select: none;
             touch-action: none;
-            opacity: 0.4;
+            opacity: 0.55;
         }
-        .drag-handle:active { opacity: 0.8; }
+        .drag-handle:active { opacity: 1; cursor: grabbing; }
+        .list-wrap.drag-active .drag-handle { cursor: grabbing; }
         .asset-header {
             display: flex;
             align-items: center;
@@ -820,7 +822,7 @@
         <img class="header-icon" src="/icons/icon-192.png" alt="ReBalance" width="36" height="36">
         <div class="header-text">
             <h1>ReBalance Stock</h1>
-            <p>กดค้าง ≡ เพื่อสลับลำดับ</p>
+            <p>ลาก ≡ เพื่อสลับลำดับ</p>
         </div>
         <button class="btn-sync synced" id="btn-sync" type="button" title="ซิงค์อัตโนมัติทุกอุปกรณ์">☁<span class="sync-dot"></span></button>
         <button class="btn-settings" id="btn-settings" type="button" title="ตั้งค่า" onclick="openSettingsSheet()">⚙</button>
@@ -2206,8 +2208,10 @@ document.getElementById('new-asset-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') addAsset();
 });
 
-/* Drag to reorder (long-press on ≡ handle) */
+/* Drag to reorder (≡ handle — long-press or drag vertically) */
 let drag = null;
+const DRAG_PRESS_MS = 280;
+const DRAG_MOVE_PX = 8;
 
 function getPoint(e) {
     return e.touches ? e.touches[0] : e;
@@ -2230,7 +2234,8 @@ function activateDrag(point) {
     card.style.top = (point.clientY - drag.offsetY) + 'px';
 
     list.classList.add('drag-active');
-    if (navigator.vibrate) navigator.vibrate(20);
+    document.body.classList.add('drag-active');
+    if (navigator.vibrate) navigator.vibrate(15);
 }
 
 function movePlaceholder(clientY) {
@@ -2255,6 +2260,7 @@ function finishDrag() {
     card.classList.remove('drag-float');
     card.removeAttribute('style');
     list.classList.remove('drag-active');
+    document.body.classList.remove('drag-active');
 
     const cards = [...list.querySelectorAll('.asset-card')];
     const reordered = cards.map(c => myPortfolio[parseInt(c.dataset.index)]);
@@ -2278,13 +2284,17 @@ function onDragStart(e) {
     if (!card) return;
 
     const point = getPoint(e);
+    if (e.type === 'mousedown') e.preventDefault();
+
     drag = {
         card,
         list: card.parentElement,
         startX: point.clientX,
         startY: point.clientY,
         offsetY: point.clientY - card.getBoundingClientRect().top,
-        timer: setTimeout(() => activateDrag(point), 400),
+        timer: setTimeout(() => {
+            if (drag && !drag.active) activateDrag({ clientX: drag.startX, clientY: drag.startY });
+        }, DRAG_PRESS_MS),
         active: false
     };
 }
@@ -2294,9 +2304,11 @@ function onDragMove(e) {
     const point = getPoint(e);
 
     if (!drag.active) {
-        if (Math.abs(point.clientY - drag.startY) > 8 || Math.abs(point.clientX - drag.startX) > 8) {
+        const dy = Math.abs(point.clientY - drag.startY);
+        const dx = Math.abs(point.clientX - drag.startX);
+        if (dy >= DRAG_MOVE_PX && dy > dx) {
             clearTimeout(drag.timer);
-            drag = null;
+            activateDrag(point);
         }
         return;
     }
@@ -2315,7 +2327,7 @@ function onDragEnd() {
 
 (function initDragSort() {
     const list = document.getElementById('assets-list');
-    list.addEventListener('touchstart', onDragStart, { passive: true });
+    list.addEventListener('touchstart', onDragStart, { passive: false });
     list.addEventListener('mousedown', onDragStart);
     document.addEventListener('touchmove', onDragMove, { passive: false });
     document.addEventListener('mousemove', onDragMove);
