@@ -409,6 +409,7 @@
             line-height: 1.25;
         }
         .asset-stats .stat-num.asset-rebalance,
+        .asset-stats .stat-num.asset-trade-signal,
         .asset-stats .stat-sub.asset-trade-detail {
             white-space: normal;
             overflow: visible;
@@ -555,27 +556,31 @@
         .asset-fv-head {
             flex: 1;
             min-width: 0;
-            text-align: right;
-            line-height: 1.2;
-            padding: 0 2px;
+            text-align: center;
+            padding: 0 4px;
             font-variant-numeric: tabular-nums;
         }
-        .asset-fv-label {
-            display: block;
-            font-size: 8px;
-            font-weight: 600;
-            color: #a0aec0;
-        }
-        .asset-fv-price {
+        .asset-fv-inline {
             display: block;
             font-size: 10px;
+            font-weight: 600;
+            color: #718096;
+            line-height: 1.25;
+            white-space: normal;
+        }
+        .asset-fv-inline .asset-fv-price {
             font-weight: 700;
             color: #2d3748;
         }
-        .asset-fv-opp {
-            display: block;
-            font-size: 10px;
-            font-weight: 700;
+        .asset-fv-inline .asset-fv-opp { font-weight: 700; }
+        .asset-cost-line {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: unset;
+        }
+        .asset-cost-line .gain,
+        .asset-cost-line .loss {
+            margin-left: 5px;
         }
         .asset-action {
             flex-shrink: 0;
@@ -1515,7 +1520,7 @@ function formatFvHeader(symbol) {
     const up = fv.upsidePercent != null
         ? fv.upsidePercent
         : (price > 0 ? ((fv.fairValue - price) / price) * 100 : null);
-    const fvText = `$${fmt(fv.fairValue, 2)}`;
+    const fvText = `$${fmt(fv.fairValue, 0)}`;
     if (up == null) return { fv: fvText, opp: '', oppCls: 'muted' };
     const sign = up > 0 ? '+' : '';
     return {
@@ -1529,32 +1534,45 @@ function formatCostCell(asset, profitPct, cost) {
     const pl = formatPlPct(profitPct, cost);
     return {
         main: asset.avgCost > 0 ? `$${fmt(asset.avgCost, 2)}` : '—',
-        mainCls: asset.avgCost > 0 ? '' : 'muted',
+        empty: !asset.avgCost,
         sub: pl.text,
         subCls: pl.cls,
     };
 }
 
+function formatSignalLine(tradeSignal) {
+    return tradeSignal.sub ? `${tradeSignal.text} ${tradeSignal.sub}` : tradeSignal.text;
+}
+
 function renderFvHeaderHtml(symbol) {
     const h = formatFvHeader(symbol);
-    const oppStyle = h.opp ? '' : ' style="display:none"';
-    return `<div class="asset-fv-head">
-                <span class="asset-fv-label">ยุติธรรม</span>
-                <span class="asset-fv-price">${h.fv}</span>
-                <span class="asset-fv-opp ${h.oppCls}"${oppStyle}>${h.opp}</span>
-            </div>`;
+    const oppHtml = h.opp ? `<span class="asset-fv-opp ${h.oppCls}">${h.opp}</span>` : '';
+    return `<div class="asset-fv-head"><span class="asset-fv-inline">ราคายุติธรรม <span class="asset-fv-price">${h.fv}</span> ${oppHtml}</span></div>`;
 }
 
 function updateFvHeader(card, symbol) {
+    const el = card.querySelector('.asset-fv-inline');
+    if (!el) return;
     const h = formatFvHeader(symbol);
-    const priceEl = card.querySelector('.asset-fv-price');
-    const oppEl = card.querySelector('.asset-fv-opp');
-    if (priceEl) priceEl.textContent = h.fv;
-    if (oppEl) {
-        oppEl.textContent = h.opp;
-        oppEl.className = 'asset-fv-opp ' + h.oppCls;
-        oppEl.style.display = h.opp ? '' : 'none';
+    const oppHtml = h.opp ? `<span class="asset-fv-opp ${h.oppCls}">${h.opp}</span>` : '';
+    el.innerHTML = `ราคายุติธรรม <span class="asset-fv-price">${h.fv}</span> ${oppHtml}`;
+}
+
+function updateCostLine(card, costCell) {
+    const el = card.querySelector('.asset-cost-line');
+    if (!el) return;
+    if (costCell.empty) {
+        el.textContent = '—';
+        el.className = 'stat-num asset-cost-line muted';
+        return;
     }
+    el.innerHTML = `<span class="hi">${costCell.main}</span><span class="${costCell.subCls}">${costCell.sub}</span>`;
+    el.className = 'stat-num asset-cost-line';
+}
+
+function renderCostLineHtml(costCell) {
+    if (costCell.empty) return '<span class="stat-num asset-cost-line muted">—</span>';
+    return `<span class="stat-num asset-cost-line"><span class="hi">${costCell.main}</span><span class="${costCell.subCls}">${costCell.sub}</span></span>`;
 }
 
 function formatTradeAmount(usd, asset) {
@@ -1693,13 +1711,13 @@ function updateSummary(totalValue, totalTarget, assets) {
 
 function renderAdviceRow(tradeSignal, action) {
     const leftCls = tradeSignal.cls + ' advice';
+    const signalText = formatSignalLine(tradeSignal);
     const rightCls = 'asset-rebalance ' + action.cls;
     return `
                 <div class="stat-pair">
                     <div class="stat-col">
                         <span class="stat-label">สัญญาณ</span>
-                        <span class="stat-num asset-trade-signal ${leftCls}">${tradeSignal.text}</span>
-                        <span class="stat-sub asset-trade-detail ${leftCls}" style="display:${tradeSignal.sub ? '' : 'none'}">${tradeSignal.sub}</span>
+                        <span class="stat-num asset-trade-signal ${leftCls}">${signalText}</span>
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">สัดส่วน</span>
@@ -1710,22 +1728,12 @@ function renderAdviceRow(tradeSignal, action) {
 
 function updateAdviceRow(card, tradeSignal, action) {
     const leftNum = card.querySelector('.asset-trade-signal');
-    const leftSub = card.querySelector('.asset-trade-detail');
     const rightEl = card.querySelector('.asset-rebalance');
     if (!leftNum || !rightEl) return;
 
     const leftCls = tradeSignal.cls + ' advice';
-    leftNum.textContent = tradeSignal.text;
+    leftNum.textContent = formatSignalLine(tradeSignal);
     leftNum.className = 'stat-num asset-trade-signal ' + leftCls;
-    if (leftSub) {
-        if (tradeSignal.sub) {
-            leftSub.textContent = tradeSignal.sub;
-            leftSub.className = 'stat-sub asset-trade-detail ' + leftCls;
-            leftSub.style.display = '';
-        } else {
-            leftSub.style.display = 'none';
-        }
-    }
     rightEl.textContent = action.text;
     rightEl.className = 'stat-num asset-rebalance ' + action.cls;
 }
@@ -1749,16 +1757,7 @@ function recalculate() {
         if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
 
         const costCell = formatCostCell(asset, profitPct, cost);
-        const costPriceEl = card.querySelector('.asset-cost-price');
-        if (costPriceEl) {
-            costPriceEl.textContent = costCell.main;
-            costPriceEl.className = 'stat-num asset-cost-price ' + costCell.mainCls;
-        }
-        const costPlEl = card.querySelector('.asset-cost-pl');
-        if (costPlEl) {
-            costPlEl.textContent = costCell.sub;
-            costPlEl.className = 'stat-sub asset-cost-pl ' + costCell.subCls;
-        }
+        updateCostLine(card, costCell);
 
         const price = getPrice(asset.name);
         const priceEl = card.querySelector('.asset-price');
@@ -1887,9 +1886,8 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                 </div>
                 <div class="stat-pair">
                     <div class="stat-col">
-                        <span class="stat-label">ทุน · ราคา</span>
-                        <span class="stat-num asset-cost-price ${costCell.mainCls}">${costCell.main}</span>
-                        <span class="stat-sub asset-cost-pl ${costCell.subCls}">${costCell.sub}</span>
+                        <span class="stat-label">ราคา · ทุน</span>
+                        ${renderCostLineHtml(costCell)}
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">ราคา · ปัจจุบัน</span>
