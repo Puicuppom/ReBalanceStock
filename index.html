@@ -226,11 +226,11 @@
         }
         .mode-btn {
             flex: 1;
-            padding: 8px 6px;
+            padding: 8px 4px;
             border-radius: 10px;
             border: 1px solid var(--border);
             background: #f7fafc;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             color: var(--muted);
             cursor: pointer;
@@ -834,7 +834,7 @@
             <div class="summary-value">$<span id="total-value">0</span></div>
         </div>
         <div class="summary-item" id="target-box">
-            <div class="summary-label">เป้าหมายรวม (ETF+หุ้น)</div>
+            <div class="summary-label">เป้าหมายรวม</div>
             <div class="summary-value" id="target-status">0%</div>
             <div class="summary-sub" id="target-breakdown"></div>
         </div>
@@ -844,6 +844,7 @@
         <button class="mode-btn active" id="mode-income" type="button" onclick="setTab('income')">ปันผล</button>
         <button class="mode-btn" id="mode-growth" type="button" onclick="setTab('growth')">Growth</button>
         <button class="mode-btn" id="mode-alpha" type="button" onclick="setTab('alpha')">Alpha</button>
+        <button class="mode-btn" id="mode-cash" type="button" onclick="setTab('cash')">เงินสด</button>
     </div>
 
     <div class="squad-note" id="squad-note"></div>
@@ -877,7 +878,7 @@
                     <span class="settings-chevron">▼</span>
                 </button>
                 <div class="settings-panel hidden" id="group-panel">
-                    <div class="setting-hint">ปันผล · Growth · Alpha — รวมต้องได้ 100.00%</div>
+                    <div class="setting-hint">ปันผล · Growth · Alpha · เงินสด — รวมต้องได้ 100.00%</div>
                     <div id="group-target-inputs"></div>
                     <div class="setting-hint" id="group-target-sum" style="margin-top:8px"></div>
                     <div class="setting-hint">ปรับกลุ่มแล้วสัดส่วนหุ้นในกลุ่มจะถูกปรับตามสัดส่วนเดิม</div>
@@ -946,7 +947,7 @@ const SUPABASE_URL = 'https://fmbympgecspgqtnazrbm.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtYnltcGdlY3NwZ3F0bmF6cmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NDkwOTksImV4cCI6MjA2NjMyNTA5OX0.rqOrNDNRTF7WnDS6utTTKfFoNZKPiMZV_ttqYzYCaJs';
 const SYNC_KEY = 'rebalance-puicuppom-v1';
 
-const GROUP_ORDER = ['income', 'growth', 'alpha'];
+const GROUP_ORDER = ['income', 'growth', 'alpha', 'cash'];
 
 const GROUPS = {
     income: {
@@ -963,6 +964,11 @@ const GROUPS = {
         label: '3. ทัพเสริมสร้าง Alpha',
         hint: 'Growth / Tactical · จับจังหวะตามแนวรับ',
         kind: 'stock'
+    },
+    cash: {
+        label: '4. เงินสด',
+        hint: 'Cash · สำรองและรอลงทุน',
+        kind: 'cash'
     }
 };
 
@@ -981,19 +987,30 @@ const defaultAssets = [
     { name: 'MSFT', kind: 'stock', group: 'growth', shares: 0, avgCost: 0, target: 20 },
     { name: 'AVGO', kind: 'stock', group: 'growth', shares: 0, avgCost: 0, target: 15 },
     { name: 'META', kind: 'stock', group: 'alpha',  shares: 0, avgCost: 0, target: 12 },
-    { name: 'PLTR', kind: 'stock', group: 'alpha',  shares: 0, avgCost: 0, target: 8 }
+    { name: 'PLTR', kind: 'stock', group: 'alpha',  shares: 0, avgCost: 0, target: 8 },
+    { name: 'USD',  kind: 'cash',  group: 'cash',   shares: 0, avgCost: 1, target: 0 }
 ];
 
 const ETF_SYMBOLS = new Set(['QQQI', 'RDTE', 'JEPQ', 'SMH', 'IBIT', 'VOO', 'SPY', 'QQQ', 'VTI', 'ACWI']);
 
-function inferKind(name) {
+const CASH_SYMBOLS = new Set(['USD', 'CASH', 'เงินสด']);
+
+function inferKind(name, group) {
+    if (group === 'cash' || CASH_SYMBOLS.has(String(name).toUpperCase())) return 'cash';
     return ETF_SYMBOLS.has(String(name).toUpperCase()) ? 'etf' : 'stock';
 }
 
 function inferGroup(name, kind) {
+    if (kind === 'cash') return 'cash';
     const s = STRATEGY[name];
     if (s) return s.group;
     return kind === 'etf' ? 'income' : 'alpha';
+}
+
+function isCashAsset(asset) {
+    if (asset.kind === 'cash') return true;
+    const group = asset.group || inferGroup(asset.name, asset.kind);
+    return group === 'cash';
 }
 
 function getAssetRole(name) {
@@ -1028,13 +1045,19 @@ function unmarkAssetDeleted(name) {
 function applyStrategyMigration(list) {
     if (localStorage.getItem('strategyTargets') === '2') return list;
     list.forEach(a => {
+        if (a.kind === 'cash' || a.group === 'cash') {
+            a.kind = 'cash';
+            a.group = 'cash';
+            a.avgCost = 1;
+            return;
+        }
         const s = STRATEGY[a.name];
         if (s) {
             a.target = s.target;
             a.group = s.group;
             a.kind = s.kind;
         } else if (!a.group) {
-            a.group = inferGroup(a.name, a.kind || inferKind(a.name));
+            a.group = inferGroup(a.name, a.kind || inferKind(a.name, a.group));
         }
     });
     localStorage.setItem('strategyTargets', '2');
@@ -1058,13 +1081,14 @@ let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || defaultAsse
 myPortfolio = mergeDefaultPortfolio(myPortfolio);
 myPortfolio = applyStrategyMigration(myPortfolio);
 myPortfolio = myPortfolio.map(a => {
-    const kind = a.kind || inferKind(a.name);
+    const group = a.group || inferGroup(a.name, a.kind);
+    const kind = a.kind || inferKind(a.name, group);
     const item = {
         name: a.name,
         kind,
-        group: a.group || inferGroup(a.name, kind),
+        group: kind === 'cash' ? 'cash' : group,
         shares: a.shares ?? 0,
-        avgCost: a.avgCost ?? 0,
+        avgCost: kind === 'cash' ? 1 : (a.avgCost ?? 0),
         target: a.target ?? 0,
         peakValue: a.peakValue || 0,
         tiersDone: a.tiersDone || [false, false, false]
@@ -1083,6 +1107,13 @@ function getPrice(symbol) {
 
 function syncAssetValues() {
     myPortfolio.forEach(a => {
+        if (isCashAsset(a)) {
+            a.price = 1;
+            a.avgCost = 1;
+            a.value = a.shares || 0;
+            a.cost = a.shares || 0;
+            return;
+        }
         const price = getPrice(a.name);
         if (a._legacyValue && price > 0) {
             a.shares = a._legacyValue / price;
@@ -1096,7 +1127,7 @@ function syncAssetValues() {
 
 async function fetchPrices(fullRender = false) {
     if (priceFetching) return;
-    const symbols = myPortfolio.map(a => a.name).filter(Boolean);
+    const symbols = myPortfolio.filter(a => !isCashAsset(a)).map(a => a.name).filter(Boolean);
     if (!symbols.length) return;
 
     priceFetching = true;
@@ -1165,13 +1196,14 @@ function normalizePortfolioList(list, skipMigration = false) {
     list = mergeDefaultPortfolio(list);
     if (!skipMigration) list = applyStrategyMigration(list);
     return list.map(a => {
-        const kind = a.kind || inferKind(a.name);
+        const group = a.group || inferGroup(a.name, a.kind);
+        const kind = a.kind || inferKind(a.name, group);
         return {
             name: a.name,
             kind,
-            group: a.group || inferGroup(a.name, kind),
+            group: kind === 'cash' ? 'cash' : group,
             shares: a.shares ?? 0,
-            avgCost: a.avgCost ?? 0,
+            avgCost: kind === 'cash' ? 1 : (a.avgCost ?? 0),
             target: a.target ?? 0,
             peakValue: a.peakValue || 0,
             tiersDone: a.tiersDone || [false, false, false]
@@ -1215,8 +1247,8 @@ function getCloudPayload() {
         version: 1,
         portfolio: myPortfolio.map(a => ({
             name: a.name,
-            kind: a.kind || inferKind(a.name),
-            group: a.group || inferGroup(a.name, a.kind),
+            kind: a.kind || inferKind(a.name, a.group),
+            group: isCashAsset(a) ? 'cash' : (a.group || inferGroup(a.name, a.kind)),
             shares: a.shares || 0,
             avgCost: a.avgCost || 0,
             target: a.target || 0,
@@ -1333,7 +1365,7 @@ async function initCloudSync() {
     setupRealtime();
 }
 
-const TAB_LABELS = { income: 'ปันผล', growth: 'Growth', alpha: 'Alpha' };
+const TAB_LABELS = { income: 'ปันผล', growth: 'Growth', alpha: 'Alpha', cash: 'เงินสด' };
 
 function loadActiveTab() {
     const saved = localStorage.getItem('activeTab');
@@ -1344,7 +1376,7 @@ function loadActiveTab() {
 let activeTab = loadActiveTab();
 
 function showProfitTaking() {
-    return activeTab !== 'income';
+    return activeTab !== 'income' && activeTab !== 'cash';
 }
 
 function setTab(tab) {
@@ -1369,6 +1401,16 @@ function updateTabUI() {
     document.getElementById('squad-note').textContent =
         `${g.hint} · เป้าทัพนี้ ${fmtPct(squadPct)} · รวมทั้งพอร์ตต้องครบ 100.00%`;
     updateGroupTargetSum();
+    const addInput = document.getElementById('new-asset-name');
+    if (addInput) {
+        addInput.placeholder = activeTab === 'cash' ? 'ชื่อ เช่น USD, CASH' : 'ชื่อย่อ เช่น QQQI, MSFT';
+    }
+    const fab = document.querySelector('.fab');
+    if (fab) {
+        fab.innerHTML = activeTab === 'cash'
+            ? '<span>＋</span> เพิ่มเงินสด'
+            : '<span>＋</span> เพิ่มสินทรัพย์';
+    }
 }
 
 function renderGroupTargetSettings() {
@@ -1378,7 +1420,7 @@ function renderGroupTargetSettings() {
         const val = getTargetByGroup(g);
         const count = myPortfolio.filter(a => getAssetGroup(a) === g).length;
         return `<div class="tier-row" style="margin-bottom:8px">
-            <label style="width:54px">${TAB_LABELS[g]}</label>
+            <label style="width:58px">${TAB_LABELS[g]}</label>
             <input class="setting-input" type="text" inputmode="decimal"
                 value="${formatInputVal(val)}"
                 ${count ? '' : 'placeholder="0.00"'}
@@ -1499,10 +1541,10 @@ function renderTierSettings() {
 function persistPortfolio() {
     const data = myPortfolio.map(a => ({
         name: a.name,
-        kind: a.kind || inferKind(a.name),
-        group: a.group || inferGroup(a.name, a.kind),
+        kind: a.kind || inferKind(a.name, a.group),
+        group: isCashAsset(a) ? 'cash' : (a.group || inferGroup(a.name, a.kind)),
         shares: a.shares || 0,
-        avgCost: a.avgCost || 0,
+        avgCost: isCashAsset(a) ? 1 : (a.avgCost || 0),
         target: a.target || 0,
         peakValue: a.peakValue || 0,
         tiersDone: a.tiersDone || [false, false, false]
@@ -1537,7 +1579,7 @@ function updatePeakValues() {
 }
 
 function getProfitAdvice(asset, profitPct, cost) {
-    if (!cost || cost <= 0 || getAssetGroup(asset) === 'income') return null;
+    if (!cost || cost <= 0 || getAssetGroup(asset) === 'income' || isCashAsset(asset)) return null;
 
     const t1 = profitTiers[0];
     const t2 = profitTiers[1];
@@ -1623,13 +1665,17 @@ function formatSignalLine(tradeSignal) {
     return tradeSignal.sub ? `${tradeSignal.text} ${tradeSignal.sub}` : tradeSignal.text;
 }
 
-function renderFvHeaderHtml(symbol) {
+function renderFvHeaderHtml(symbol, asset) {
+    if (asset && isCashAsset(asset)) {
+        return `<div class="asset-fv-head"><span class="asset-fv-inline muted">เงินสด</span></div>`;
+    }
     const h = formatFvHeader(symbol);
     const oppHtml = h.opp ? `<span class="asset-fv-opp ${h.oppCls}">${h.opp}</span>` : '';
     return `<div class="asset-fv-head"><span class="asset-fv-inline">ราคายุติธรรม <span class="asset-fv-price">${h.fv}</span> ${oppHtml}</span></div>`;
 }
 
-function updateFvHeader(card, symbol) {
+function updateFvHeader(card, symbol, asset) {
+    if (asset && isCashAsset(asset)) return;
     const el = card.querySelector('.asset-fv-inline');
     if (!el) return;
     const h = formatFvHeader(symbol);
@@ -1656,10 +1702,20 @@ function renderCostLineHtml(costCell) {
 
 function formatTradeAmount(usd, asset) {
     if (!usd || usd < 0.01) return '';
+    if (isCashAsset(asset)) return fmtUsd(usd);
     return `${fmtUsd(usd)}${formatShareAdvice(usd, asset)}`;
 }
 
 function getTradeSignal(asset, diff, ideal) {
+    if (isCashAsset(asset)) {
+        if (diff > 0.01) {
+            return { text: 'เติม', sub: formatTradeAmount(diff, asset), cls: 'buy' };
+        }
+        if (diff < -0.01) {
+            return { text: 'ลด', sub: formatTradeAmount(Math.abs(diff), asset), cls: 'sell' };
+        }
+        return { text: 'พอดี', sub: '', cls: 'hold' };
+    }
     const fv = getStockData(asset.name).fairValue;
     const price = getPrice(asset.name) || asset.price || 0;
     if (!fv?.fairValue || price <= 0) {
@@ -1753,6 +1809,11 @@ function formatShareAdvice(usd, asset) {
 }
 
 function getAction(diff, asset) {
+    if (isCashAsset(asset)) {
+        if (diff > 0.01) return { cls: 'buy', text: `เติม ${fmtUsd(diff)}` };
+        if (diff < -0.01) return { cls: 'sell', text: `ลด ${fmtUsd(Math.abs(diff))}` };
+        return { cls: 'hold', text: 'พอดี' };
+    }
     const sharePart = formatShareAdvice(Math.abs(diff), asset);
     if (diff > 0.01) return { cls: 'buy', text: `ซื้อ ${fmtUsd(diff)}${sharePart}` };
     if (diff < -0.01) return { cls: 'sell', text: `ขาย ${fmtUsd(Math.abs(diff))}${sharePart}` };
@@ -1796,9 +1857,10 @@ function updateSummary(totalValue, totalTarget, assets) {
     const incomeTarget = getTargetByGroup('income');
     const growthTarget = getTargetByGroup('growth');
     const alphaTarget = getTargetByGroup('alpha');
+    const cashTarget = getTargetByGroup('cash');
     targetBox.className = 'summary-item' + (totalTarget === 100 ? ' ok' : ' warn');
     targetEl.textContent = fmtPct(totalTarget) + (totalTarget !== 100 ? ' ⚠' : ' ✓');
-    breakdownEl.textContent = `Income ${fmtPct(incomeTarget)} · Growth ${fmtPct(growthTarget)} · Alpha ${fmtPct(alphaTarget)}`;
+    breakdownEl.textContent = `Income ${fmtPct(incomeTarget)} · Growth ${fmtPct(growthTarget)} · Alpha ${fmtPct(alphaTarget)} · Cash ${fmtPct(cashTarget)}`;
     updateTabUI();
 }
 
@@ -1850,23 +1912,24 @@ function recalculate() {
         if (valEl) valEl.textContent = fmtUsd(asset.value);
 
         const costCell = formatCostCell(asset, profitPct, cost);
-        updateCostLine(card, costCell);
-
-        const price = getPrice(asset.name);
-        const priceEl = card.querySelector('.asset-price');
-        if (priceEl) {
-            priceEl.textContent = price > 0 ? fmtUsd(price) : (priceCache[asset.name]?.error ? 'ไม่พบ' : '…');
-            priceEl.className = 'stat-num asset-price hi';
+        if (!isCashAsset(asset)) {
+            updateCostLine(card, costCell);
+            const price = getPrice(asset.name);
+            const priceEl = card.querySelector('.asset-price');
+            if (priceEl) {
+                priceEl.textContent = price > 0 ? fmtUsd(price) : (priceCache[asset.name]?.error ? 'ไม่พบ' : '…');
+                priceEl.className = 'stat-num asset-price hi';
+            }
         }
 
-        updateFvHeader(card, asset.name);
+        updateFvHeader(card, asset.name, asset);
 
         updateAdviceRow(card, tradeSignal, action);
     });
 
     if (assetSheetIndex != null) {
         const item = assets.find(a => a.index === assetSheetIndex);
-        if (item) updateAssetSheetLive(item);
+        if (item) updateAssetSheetLive({ ...item, asset: item.asset });
     }
 
     if (document.getElementById('settings-overlay')?.classList.contains('open')) {
@@ -1906,7 +1969,15 @@ function refreshAssetSheet() {
     document.getElementById('asset-sheet-body').innerHTML = renderAssetSheetBody(item);
 }
 
-function updateAssetSheetLive({ cost, profit, profitPct, tradeSignal }) {
+function updateAssetSheetLive({ cost, profit, profitPct, tradeSignal, asset }) {
+    if (asset && isCashAsset(asset)) {
+        const adviceEl = document.getElementById('asset-sheet-advice');
+        if (adviceEl) {
+            const detail = tradeSignal.sub ? ` · ${tradeSignal.sub}` : '';
+            adviceEl.textContent = `สัดส่วน: ${tradeSignal.text}${detail}`;
+        }
+        return;
+    }
     const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
     const profitEl = document.getElementById('asset-sheet-profit');
     if (profitEl) {
@@ -1922,6 +1993,30 @@ function updateAssetSheetLive({ cost, profit, profitPct, tradeSignal }) {
 }
 
 function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSignal }) {
+    if (isCashAsset(asset)) {
+        const adviceDetail = tradeSignal.sub ? ` · ${tradeSignal.sub}` : '';
+        const adviceText = `สัดส่วน: ${tradeSignal.text}${adviceDetail}`;
+        return `
+        <div class="setting-hint" style="margin-bottom:12px">เงินสด · กรอกยอดเป็น USD</div>
+        <div class="asset-sheet-grid">
+            <div class="asset-sheet-field">
+                <label>จำนวนเงิน ($)</label>
+                <input type="text" inputmode="decimal" value="${asset.shares ? formatInputVal(asset.shares) : ''}" placeholder="0.00" autocomplete="off"
+                    oninput="updateAsset(${index}, 'shares', this.value)">
+            </div>
+            <div class="asset-sheet-field">
+                <label>เป้าหมายสัดส่วน (%)</label>
+                <input type="text" inputmode="decimal" value="${asset.target ? formatInputVal(asset.target) : ''}" placeholder="0.00" autocomplete="off"
+                    oninput="updateAsset(${index}, 'target', this.value)">
+            </div>
+            <div class="asset-sheet-field">
+                <label>ปรับสัดส่วน</label>
+                <div class="setting-hint asset-sheet-advice" id="asset-sheet-advice">${adviceText}</div>
+            </div>
+        </div>
+        <button class="btn-settings-done" type="button" style="margin-top:14px;background:var(--red)" onclick="deleteAssetFromSheet(${index})">ลบออกจากพอร์ต</button>
+        <button class="btn-settings-done" type="button" onclick="closeAssetSheet()">เสร็จสิ้น</button>`;
+    }
     const role = getAssetRole(asset.name);
     const profitFmt = cost > 0 ? formatProfit(profit, profitPct) : { text: '—', cls: '' };
     const adviceDetail = tradeSignal.sub ? ` · ${tradeSignal.sub}` : '';
@@ -1956,6 +2051,7 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSign
 }
 
 function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, tradeSignal, action) {
+    const cash = isCashAsset(asset);
     const costCell = formatCostCell(asset, profitPct, cost);
     const price = getPrice(asset.name);
     const priceText = price > 0 ? fmtUsd(price) : '…';
@@ -1981,6 +2077,7 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                         <span class="stat-num asset-value hi">${fmtUsd(asset.value)}</span>
                     </div>
                 </div>
+                ${cash ? '' : `
                 <div class="stat-pair">
                     <div class="stat-col">
                         <span class="stat-label">ราคา · ทุน</span>
@@ -1990,7 +2087,7 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                         <span class="stat-label">ราคา · ปัจจุบัน</span>
                         <span class="stat-num asset-price hi">${priceText}</span>
                     </div>
-                </div>
+                </div>`}
                 ${renderAdviceRow(tradeSignal, action)}
             </div>`;
 }
@@ -2011,7 +2108,7 @@ function appendAssetCard(list, payload) {
             <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
             <div class="asset-badge">${asset.name.slice(0, 4)}</div>
             <div class="asset-name">${asset.name}</div>
-            ${renderFvHeaderHtml(asset.name)}
+            ${renderFvHeaderHtml(asset.name, asset)}
             <button class="btn-card-gear" type="button" aria-label="ตั้งค่า ${asset.name}" onclick="openAssetSheet(${index})">⚙</button>
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
         </div>
@@ -2084,14 +2181,18 @@ function closeAddSheet(e) {
 }
 
 function addAsset() {
-    const name = document.getElementById('new-asset-name').value.trim().toUpperCase();
-    if (!name) return;
+    let name = document.getElementById('new-asset-name').value.trim().toUpperCase();
     const group = activeTab;
-    const kind = GROUPS[group]?.kind || inferKind(name);
+    if (group === 'cash') {
+        if (!name) name = 'USD';
+    } else if (!name) {
+        return;
+    }
+    const kind = group === 'cash' ? 'cash' : (GROUPS[group]?.kind || inferKind(name, group));
     unmarkAssetDeleted(name);
     myPortfolio.push({
-        name, kind, group,
-        shares: 0, avgCost: 0, target: 0,
+        name, kind, group: kind === 'cash' ? 'cash' : group,
+        shares: 0, avgCost: kind === 'cash' ? 1 : 0, target: 0,
         peakValue: 0, tiersDone: [false, false, false]
     });
     sortPortfolioByGroup();
