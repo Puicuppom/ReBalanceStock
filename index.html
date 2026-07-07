@@ -416,8 +416,12 @@
             text-overflow: unset;
         }
         .stat-num.hi { color: var(--accent); }
+        .gain { color: var(--green); }
+        .loss { color: var(--red); }
         .stat-sub.gain, .stat-num.gain { color: var(--green); }
         .stat-sub.loss, .stat-num.loss { color: var(--red); }
+        .asset-fv-opp.gain { color: var(--green); }
+        .asset-fv-opp.loss { color: var(--red); }
         .stat-num.muted, .stat-sub.muted { color: #a0aec0; font-weight: 600; }
         .btn-card-gear {
             flex-shrink: 0;
@@ -1342,14 +1346,14 @@ function updateTabUI() {
     GROUP_ORDER.forEach(g => {
         const btn = document.getElementById('mode-' + g);
         if (btn) {
-            btn.textContent = `${TAB_LABELS[g]} ${getTargetByGroup(g)}%`;
+            btn.textContent = `${TAB_LABELS[g]} ${fmtPct(getTargetByGroup(g))}`;
             btn.classList.toggle('active', g === activeTab);
         }
     });
     const g = GROUPS[activeTab];
     const squadPct = getTargetByGroup(activeTab);
     document.getElementById('squad-note').textContent =
-        `${g.hint} · เป้าทัพนี้ ${squadPct}% · รวมทั้งพอร์ตต้องครบ 100%`;
+        `${g.hint} · เป้าทัพนี้ ${fmtPct(squadPct)} · รวมทั้งพอร์ตต้องครบ 100.00%`;
 }
 
 function openSettingsSheet() {
@@ -1477,7 +1481,7 @@ function getProfitAdvice(asset, profitPct, cost) {
             sellPct: remaining,
             sellAmount,
             text: 'ขาย',
-            sub: `$${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)} · Trailing ${remaining}%`
+            sub: `${fmtUsd(sellAmount)}${formatShareAdvice(sellAmount, asset)} · Trailing ${fmtPct(remaining)}`
         };
     }
 
@@ -1489,7 +1493,7 @@ function getProfitAdvice(asset, profitPct, cost) {
             sellPct: cumulative2,
             sellAmount,
             text: 'ขาย',
-            sub: `$${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)} · ${cumulative2}%`
+            sub: `${fmtUsd(sellAmount)}${formatShareAdvice(sellAmount, asset)} · ${fmtPct(cumulative2)}`
         };
     }
 
@@ -1502,7 +1506,7 @@ function getProfitAdvice(asset, profitPct, cost) {
             sellPct: pct,
             sellAmount,
             text: 'ขาย',
-            sub: `$${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)} · ${pct}%`
+            sub: `${fmtUsd(sellAmount)}${formatShareAdvice(sellAmount, asset)} · ${fmtPct(pct)}`
         };
     }
 
@@ -1520,12 +1524,12 @@ function formatFvHeader(symbol) {
     const up = fv.upsidePercent != null
         ? fv.upsidePercent
         : (price > 0 ? ((fv.fairValue - price) / price) * 100 : null);
-    const fvText = `$${fmt(fv.fairValue, 0)}`;
+    const fvText = fmtUsd(fv.fairValue);
     if (up == null) return { fv: fvText, opp: '', oppCls: 'muted' };
     const sign = up > 0 ? '+' : '';
     return {
         fv: fvText,
-        opp: `${sign}${up.toFixed(1)}%`,
+        opp: `${sign}${fmt(up, 2)}%`,
         oppCls: up > 0 ? 'gain' : up < 0 ? 'loss' : 'muted',
     };
 }
@@ -1533,7 +1537,7 @@ function formatFvHeader(symbol) {
 function formatCostCell(asset, profitPct, cost) {
     const pl = formatPlPct(profitPct, cost);
     return {
-        main: asset.avgCost > 0 ? `$${fmt(asset.avgCost, 2)}` : '—',
+        main: asset.avgCost > 0 ? fmtUsd(asset.avgCost) : '—',
         empty: !asset.avgCost,
         sub: pl.text,
         subCls: pl.cls,
@@ -1577,7 +1581,7 @@ function renderCostLineHtml(costCell) {
 
 function formatTradeAmount(usd, asset) {
     if (!usd || usd < 0.01) return '';
-    return `$${fmt(usd, 0)}${formatShareAdvice(usd, asset)}`;
+    return `${fmtUsd(usd)}${formatShareAdvice(usd, asset)}`;
 }
 
 function getTradeSignal(asset, diff, ideal) {
@@ -1622,7 +1626,7 @@ function getBuyAlerts(asset, diff, curPct) {
             type: 'rebalance',
             amount: diff,
             gap: asset.target - curPct,
-            text: `ปรับสัดส่วน $${fmt(diff, 0)} (ต่ำเป้า ${(asset.target - curPct).toFixed(1)}%)`
+            text: `ปรับสัดส่วน ${fmtUsd(diff)} (ต่ำเป้า ${fmtPct(asset.target - curPct)})`
         });
     }
     return alerts;
@@ -1630,6 +1634,14 @@ function getBuyAlerts(asset, diff, curPct) {
 
 function fmt(n, dec = 2) {
     return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+function fmtPct(n) {
+    return fmt(n, 2) + '%';
+}
+
+function fmtUsd(n) {
+    return '$' + fmt(n, 2);
 }
 
 function formatInputVal(n, dec = 2) {
@@ -1661,8 +1673,8 @@ function formatShareAdvice(usd, asset) {
 
 function getAction(diff, asset) {
     const sharePart = formatShareAdvice(Math.abs(diff), asset);
-    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ $${fmt(diff, 0)}${sharePart}` };
-    if (diff < -0.01) return { cls: 'sell', text: `ขาย $${fmt(Math.abs(diff), 0)}${sharePart}` };
+    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ ${fmtUsd(diff)}${sharePart}` };
+    if (diff < -0.01) return { cls: 'sell', text: `ขาย ${fmtUsd(Math.abs(diff))}${sharePart}` };
     return { cls: 'hold', text: 'สมดุล' };
 }
 
@@ -1691,11 +1703,11 @@ function computePortfolio() {
 function formatProfit(profit, profitPct) {
     const sign = profit >= 0 ? '+' : '';
     const cls = profit >= 0 ? 'gain' : 'loss';
-    return { text: `${sign}${profitPct.toFixed(2)}% ($${fmt(Math.abs(profit), 0)})`, cls };
+    return { text: `${sign}${fmtPct(profitPct)} (${fmtUsd(Math.abs(profit))})`, cls };
 }
 
 function updateSummary(totalValue, totalTarget, assets) {
-    document.getElementById('total-value').textContent = fmt(totalValue, 0);
+    document.getElementById('total-value').textContent = fmt(totalValue, 2);
 
     const targetBox = document.getElementById('target-box');
     const targetEl = document.getElementById('target-status');
@@ -1704,8 +1716,8 @@ function updateSummary(totalValue, totalTarget, assets) {
     const growthTarget = getTargetByGroup('growth');
     const alphaTarget = getTargetByGroup('alpha');
     targetBox.className = 'summary-item' + (totalTarget === 100 ? ' ok' : ' warn');
-    targetEl.textContent = totalTarget + '%' + (totalTarget !== 100 ? ' ⚠' : ' ✓');
-    breakdownEl.textContent = `Income ${incomeTarget}% · Growth ${growthTarget}% · Alpha ${alphaTarget}%`;
+    targetEl.textContent = fmtPct(totalTarget) + (totalTarget !== 100 ? ' ⚠' : ' ✓');
+    breakdownEl.textContent = `Income ${fmtPct(incomeTarget)} · Growth ${fmtPct(growthTarget)} · Alpha ${fmtPct(alphaTarget)}`;
     updateTabUI();
 }
 
@@ -1748,13 +1760,13 @@ function recalculate() {
         if (!card) return;
 
         const targetPctEl = card.querySelector('.asset-target-pct');
-        if (targetPctEl) targetPctEl.textContent = (asset.target || 0) + '%';
+        if (targetPctEl) targetPctEl.textContent = fmtPct(asset.target || 0);
         const pctEl = card.querySelector('.asset-pct');
-        if (pctEl) pctEl.textContent = curPct.toFixed(2) + '%';
+        if (pctEl) pctEl.textContent = fmtPct(curPct);
         const idealEl = card.querySelector('.asset-ideal');
-        if (idealEl) idealEl.textContent = '$' + fmt(ideal, 0);
+        if (idealEl) idealEl.textContent = fmtUsd(ideal);
         const valEl = card.querySelector('.asset-value');
-        if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
+        if (valEl) valEl.textContent = fmtUsd(asset.value);
 
         const costCell = formatCostCell(asset, profitPct, cost);
         updateCostLine(card, costCell);
@@ -1762,7 +1774,7 @@ function recalculate() {
         const price = getPrice(asset.name);
         const priceEl = card.querySelector('.asset-price');
         if (priceEl) {
-            priceEl.textContent = price > 0 ? '$' + fmt(price, 2) : (priceCache[asset.name]?.error ? 'ไม่พบ' : '…');
+            priceEl.textContent = price > 0 ? fmtUsd(price) : (priceCache[asset.name]?.error ? 'ไม่พบ' : '…');
             priceEl.className = 'stat-num asset-price hi';
         }
 
@@ -1781,7 +1793,7 @@ function formatPlPct(profitPct, cost) {
     if (!cost) return { text: '—', cls: 'muted' };
     const sign = profitPct >= 0 ? '+' : '';
     return {
-        text: sign + profitPct.toFixed(2) + '%',
+        text: sign + fmt(profitPct, 2) + '%',
         cls: profitPct >= 0 ? 'gain' : 'loss'
     };
 }
@@ -1861,27 +1873,27 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSign
 function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, tradeSignal, action) {
     const costCell = formatCostCell(asset, profitPct, cost);
     const price = getPrice(asset.name);
-    const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
+    const priceText = price > 0 ? fmtUsd(price) : '…';
     return `
             <div class="asset-stats">
                 <div class="stat-pair">
                     <div class="stat-col">
                         <span class="stat-label">สัดส่วน · เป้า</span>
-                        <span class="stat-num asset-target-pct">${asset.target || 0}%</span>
+                        <span class="stat-num asset-target-pct">${fmtPct(asset.target || 0)}</span>
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">สัดส่วน · จริง</span>
-                        <span class="stat-num asset-pct hi">${curPct.toFixed(2)}%</span>
+                        <span class="stat-num asset-pct hi">${fmtPct(curPct)}</span>
                     </div>
                 </div>
                 <div class="stat-pair">
                     <div class="stat-col">
                         <span class="stat-label">มูลค่า · เป้า</span>
-                        <span class="stat-num asset-ideal">$${fmt(ideal, 0)}</span>
+                        <span class="stat-num asset-ideal">${fmtUsd(ideal)}</span>
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">มูลค่า · จริง</span>
-                        <span class="stat-num asset-value hi">$${fmt(asset.value, 0)}</span>
+                        <span class="stat-num asset-value hi">${fmtUsd(asset.value)}</span>
                     </div>
                 </div>
                 <div class="stat-pair">
