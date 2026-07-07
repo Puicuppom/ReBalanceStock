@@ -1043,9 +1043,9 @@ function applyStrategyMigration(list) {
 
 function sortPortfolioByGroup() {
     myPortfolio.sort((a, b) => {
-        const ga = GROUP_ORDER.indexOf(a.group || inferGroup(a.name, a.kind));
-        const gb = GROUP_ORDER.indexOf(b.group || inferGroup(b.name, b.kind));
-        return ga - gb || a.name.localeCompare(b.name);
+        const ga = GROUP_ORDER.indexOf(getAssetGroup(a));
+        const gb = GROUP_ORDER.indexOf(getAssetGroup(b));
+        return ga - gb;
     });
 }
 
@@ -2164,6 +2164,7 @@ function finishDrag() {
     });
     myPortfolio = rebuilt;
     persistPortfolio();
+    flushCloudSave();
     renderAndCalculate();
 }
 
