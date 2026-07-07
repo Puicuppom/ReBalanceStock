@@ -1315,6 +1315,7 @@ function setupRealtime() {
             const incomingAt = cloud.updatedAt || 0;
             const localUpdated = parseInt(localStorage.getItem('localUpdatedAt') || '0', 10);
             if (incomingAt <= localUpdated) return;
+            if (isUserEditing()) return;
             applyCloudData(cloud);
             if (document.querySelector('.asset-card')) {
                 syncAssetValues();
@@ -1414,6 +1415,11 @@ function setGroupTarget(group, pct) {
     }
 }
 
+function isUserEditing() {
+    const el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
 function updateGroupTarget(group, val) {
     const trimmed = String(val).trim();
     if (trimmed === '' || trimmed === '.' || trimmed === '-') return;
@@ -1421,8 +1427,7 @@ function updateGroupTarget(group, val) {
     if (isNaN(pct) || pct < 0) return;
     setGroupTarget(group, pct);
     schedulePersistPortfolio();
-    recalculate();
-    updateTabUI();
+    scheduleRecalculate();
 }
 
 function openSettingsSheet() {
@@ -1675,7 +1680,7 @@ function updateTier(index, field, val) {
     profitTiers[index][field] = parseFloat(val) || 0;
     localStorage.setItem('profitTiers', JSON.stringify(profitTiers));
     scheduleCloudSave();
-    recalculate();
+    scheduleRecalculate();
 }
 
 
@@ -1723,6 +1728,12 @@ let persistDebounce = null;
 function schedulePersistPortfolio() {
     clearTimeout(persistDebounce);
     persistDebounce = setTimeout(persistPortfolio, 600);
+}
+
+let recalcDebounce = null;
+function scheduleRecalculate() {
+    clearTimeout(recalcDebounce);
+    recalcDebounce = setTimeout(recalculate, 120);
 }
 
 function getAssetPrice(asset) {
@@ -1859,7 +1870,7 @@ function recalculate() {
     }
 
     if (document.getElementById('settings-overlay')?.classList.contains('open')) {
-        renderGroupTargetSettings();
+        updateGroupTargetSum();
     }
 }
 
@@ -2029,14 +2040,12 @@ function renderAndCalculate() {
 
 function updateAsset(index, field, val) {
     const trimmed = String(val).trim();
-    if (trimmed === '' || trimmed === '.' || trimmed === '-') {
-        myPortfolio[index][field] = 0;
-    } else {
-        const num = parseFloat(trimmed);
-        if (!isNaN(num)) myPortfolio[index][field] = num;
-    }
+    if (trimmed === '' || trimmed === '.' || trimmed === '-') return;
+    const num = parseFloat(trimmed);
+    if (isNaN(num)) return;
+    myPortfolio[index][field] = num;
     syncAssetValues();
-    recalculate();
+    scheduleRecalculate();
     schedulePersistPortfolio();
 }
 
