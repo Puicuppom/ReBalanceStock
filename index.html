@@ -837,8 +837,9 @@
                 <div class="settings-panel hidden" id="signal-panel">
                     <div class="setting-hint">ราคายุติธรรมจาก Yahoo (เป้านักวิเคราะห์ / P/E อ้างอิง)</div>
                     <div class="buy-item">
-                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ราคาต่ำกว่าราคายุติธรรม</div>
-                        <div class="setting-hint">ขาย: ราคาสูงกว่าราคายุติธรรม</div>
+                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ราคาต่ำกว่าราคายุติธรรม — แสดงจำนวนเงินและหุ้นที่แนะนำ</div>
+                        <div class="setting-hint">ขาย: ราคาสูงกว่าราคายุติธรรม — แสดงจำนวนเงินและหุ้นที่แนะนำ</div>
+                        <div class="setting-hint">ใช้ช่องว่างสัดส่วนก่อน · ถึงเป้าแล้วแนะนำ 10% ของเป้า/มูลค่าปัจจุบัน</div>
                     </div>
                 </div>
             </div>
@@ -1484,17 +1485,24 @@ function formatFairValueLine(symbol) {
     };
 }
 
-function getTradeSignal(asset) {
+function formatTradeAmount(usd, asset) {
+    if (!usd || usd < 0.01) return '';
+    return `$${fmt(usd, 0)}${formatShareAdvice(usd, asset)}`;
+}
+
+function getTradeSignal(asset, diff, ideal) {
     const fv = getStockData(asset.name).fairValue;
     const price = getPrice(asset.name) || asset.price || 0;
     if (!fv?.fairValue || price <= 0) {
         return { text: '—', sub: '', cls: 'hold' };
     }
     if (price < fv.fairValue) {
-        return { text: 'ซื้อ', sub: '', cls: 'buy' };
+        const amount = diff > 0.01 ? diff : (ideal > 0 ? ideal * 0.1 : 0);
+        return { text: 'ซื้อ', sub: formatTradeAmount(amount, asset), cls: 'buy' };
     }
     if (price > fv.fairValue) {
-        return { text: 'ขาย', sub: '', cls: 'sell' };
+        const amount = diff < -0.01 ? Math.abs(diff) : (asset.value > 0 ? asset.value * 0.1 : 0);
+        return { text: 'ขาย', sub: formatTradeAmount(amount, asset), cls: 'sell' };
     }
     return { text: 'ถือ', sub: '', cls: 'hold' };
 }
@@ -1583,7 +1591,7 @@ function computePortfolio() {
         const cost = asset.cost || 0;
         const profit = cost > 0 ? asset.value - cost : 0;
         const profitPct = cost > 0 ? (profit / cost) * 100 : 0;
-        const tradeSignal = getTradeSignal(asset);
+        const tradeSignal = getTradeSignal(asset, diff, ideal);
         return { index, asset, curPct, ideal, diff, action: getAction(diff, asset), cost, profit, profitPct, tradeSignal };
     });
 
