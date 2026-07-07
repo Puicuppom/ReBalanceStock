@@ -331,7 +331,6 @@
             color: var(--muted);
             flex-shrink: 0;
         }
-        .stat-num.advice { font-size: 15px; line-height: 1.35; }
         .stat-num.advice.sell { color: var(--red); }
         .stat-num.advice.buy { color: var(--green); }
         .stat-num.advice.hold { color: var(--muted); font-weight: 600; }
@@ -367,9 +366,10 @@
         /* ── Asset card stats — 2 equal columns ── */
         .asset-stats {
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 10px;
             overflow: hidden;
             background: #fff;
+            font-variant-numeric: tabular-nums;
         }
         .stat-pair {
             display: grid;
@@ -378,34 +378,42 @@
         }
         .stat-pair:last-child { border-bottom: none; }
         .stat-col {
-            padding: 11px 14px;
+            padding: 8px 10px;
             min-width: 0;
         }
         .stat-col + .stat-col { border-left: 1px solid var(--border); }
         .stat-label {
             display: block;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 600;
             color: #a0aec0;
-            margin-bottom: 5px;
-            letter-spacing: 0.02em;
+            margin-bottom: 3px;
+            letter-spacing: 0.01em;
+            line-height: 1.2;
         }
         .stat-num {
             display: block;
-            font-size: 16px;
+            font-size: 11px;
             font-weight: 700;
             color: #2d3748;
-            line-height: 1.2;
+            line-height: 1.25;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .stat-sub {
             display: block;
-            font-size: 12px;
-            font-weight: 700;
-            margin-top: 3px;
-            line-height: 1.2;
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 2px;
+            line-height: 1.25;
+        }
+        .asset-stats .stat-num.asset-rebalance,
+        .asset-stats .stat-sub.asset-trade-detail,
+        .asset-stats .stat-sub.asset-fv-opp {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: unset;
         }
         .stat-num.hi { color: var(--accent); }
         .stat-sub.gain, .stat-num.gain { color: var(--green); }
@@ -416,10 +424,10 @@
             background: #f7fafc;
             border: 1px solid var(--border);
             color: var(--muted);
-            font-size: 14px;
+            font-size: 12px;
             line-height: 1;
-            padding: 5px 8px;
-            border-radius: 8px;
+            padding: 4px 7px;
+            border-radius: 7px;
             cursor: pointer;
         }
         .asset-sheet-grid {
@@ -485,7 +493,7 @@
             border: 1px solid var(--border);
             border-radius: var(--radius);
             margin-bottom: 10px;
-            padding: 12px 14px;
+            padding: 10px 12px;
             transition: box-shadow 0.15s;
         }
         .asset-card.drag-float {
@@ -506,9 +514,9 @@
         .drag-handle {
             flex-shrink: 0;
             color: var(--muted);
-            font-size: 20px;
+            font-size: 16px;
             line-height: 1;
-            padding: 4px 2px;
+            padding: 3px 2px;
             cursor: grab;
             user-select: none;
             touch-action: none;
@@ -518,17 +526,17 @@
         .asset-header {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 7px;
+            margin-bottom: 8px;
         }
         .asset-badge {
             flex-shrink: 0;
-            width: 38px;
-            height: 38px;
-            border-radius: 9px;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
             background: var(--primary);
             color: #fff;
-            font-size: 9px;
+            font-size: 8px;
             font-weight: 700;
             display: flex;
             align-items: center;
@@ -539,7 +547,7 @@
             flex: 1;
             min-width: 0;
             font-weight: 700;
-            font-size: 15px;
+            font-size: 13px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -560,7 +568,7 @@
             background: none;
             border: none;
             color: var(--red);
-            font-size: 18px;
+            font-size: 16px;
             line-height: 1;
             padding: 2px 4px;
             cursor: pointer;
@@ -835,11 +843,16 @@
                     <span class="settings-chevron">▼</span>
                 </button>
                 <div class="settings-panel hidden" id="signal-panel">
-                    <div class="setting-hint">ราคายุติธรรมจาก Yahoo (เป้านักวิเคราะห์ / P/E อ้างอิง)</div>
+                    <div class="setting-hint">ราคายุติธรรมจาก Yahoo Finance</div>
                     <div class="buy-item">
-                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ราคาต่ำกว่าราคายุติธรรม — แสดงจำนวนเงินและหุ้นที่แนะนำ</div>
-                        <div class="setting-hint">ขาย: ราคาสูงกว่าราคายุติธรรม — แสดงจำนวนเงินและหุ้นที่แนะนำ</div>
-                        <div class="setting-hint">ใช้ช่องว่างสัดส่วนก่อน · ถึงเป้าแล้วแนะนำ 10% ของเป้า/มูลค่าปัจจุบัน</div>
+                        <div class="setting-hint" style="margin-top:6px"><b>สัญญาณ ซื้อ/ขาย/ถือ</b> — เปรียบราคาปัจจุบันกับราคายุติธรรม</div>
+                        <div class="setting-hint">· ต่ำกว่ายุติธรรม → ซื้อ</div>
+                        <div class="setting-hint">· สูงกว่ายุติธรรม → ขาย</div>
+                        <div class="setting-hint">· เท่ากัน → ถือ</div>
+                        <div class="setting-hint" style="margin-top:8px"><b>จำนวนเงิน/หุ้น</b> — คำนวณจากสัดส่วนเป้า</div>
+                        <div class="setting-hint">· สัดส่วนต่ำ/เกินเป้า → ใช้จำนวนปรับสัดส่วน ($ และหุ้น)</div>
+                        <div class="setting-hint">· ถึงเป้าแล้ว → แนะนำ 10% ของเป้า (ซื้อ) หรือ 10% มูลค่าปัจจุบัน (ขาย)</div>
+                        <div class="setting-hint" style="margin-top:8px"><b>ราคายุติธรรม</b> — เป้านักวิเคราะห์ 12 เดือน หรือ P/E อ้างอิง (US = 18)</div>
                     </div>
                 </div>
             </div>
@@ -1470,19 +1483,20 @@ function getStockData(symbol) {
     return priceCache[symbol] || {};
 }
 
-function formatFairValueLine(symbol) {
+function formatFvOpportunity(symbol) {
     const fv = getStockData(symbol).fairValue;
-    if (!fv?.fairValue) return { text: '—', cls: 'muted' };
     const price = getPrice(symbol);
-    let cls = 'muted';
-    if (price > 0) {
-        if (price < fv.fairValue) cls = 'gain';
-        else if (price > fv.fairValue) cls = 'loss';
-    }
-    return {
-        text: `ยุติธรรม $${fmt(fv.fairValue, 2)}`,
-        cls,
-    };
+    if (!fv?.fairValue || !price || price <= 0) return { text: '—', cls: 'muted' };
+    const up = fv.upsidePercent != null
+        ? fv.upsidePercent
+        : ((fv.fairValue - price) / price) * 100;
+    const sign = up > 0 ? '+' : '';
+    const text = up > 0
+        ? `${sign}${up.toFixed(1)}% โอกาสกำไร`
+        : up < 0
+            ? `${up.toFixed(1)}% เสี่ยงขาดทุน`
+            : 'ตามยุติธรรม';
+    return { text, cls: up > 0 ? 'gain' : up < 0 ? 'loss' : 'muted' };
 }
 
 function formatTradeAmount(usd, asset) {
@@ -1676,10 +1690,11 @@ function recalculate() {
         const valEl = card.querySelector('.asset-value');
         if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
 
-        const costEl = card.querySelector('.asset-cost');
-        if (costEl) {
-            costEl.textContent = asset.avgCost > 0 ? '$' + fmt(asset.avgCost, 2) : '—';
-            costEl.className = 'stat-num asset-cost' + (asset.avgCost > 0 ? '' : ' muted');
+        const pl = formatPlPct(profitPct, cost);
+        const costPlEl = card.querySelector('.asset-cost-pl');
+        if (costPlEl) {
+            costPlEl.textContent = pl.text;
+            costPlEl.className = 'stat-num asset-cost-pl ' + pl.cls;
         }
 
         const price = getPrice(asset.name);
@@ -1689,18 +1704,11 @@ function recalculate() {
             priceEl.className = 'stat-num asset-price hi';
         }
 
-        const pl = formatPlPct(profitPct, cost);
-        const plEl = card.querySelector('.asset-pl-pct');
-        if (plEl) {
-            plEl.textContent = pl.text;
-            plEl.className = 'stat-sub asset-pl-pct ' + pl.cls;
-        }
-
-        const fvLine = formatFairValueLine(asset.name);
-        const fvEl = card.querySelector('.asset-fv');
-        if (fvEl) {
-            fvEl.textContent = fvLine.text;
-            fvEl.className = 'stat-sub asset-fv ' + fvLine.cls;
+        const opp = formatFvOpportunity(asset.name);
+        const oppEl = card.querySelector('.asset-fv-opp');
+        if (oppEl) {
+            oppEl.textContent = opp.text;
+            oppEl.className = 'stat-sub asset-fv-opp ' + opp.cls;
         }
 
         updateAdviceRow(card, tradeSignal, action);
@@ -1795,11 +1803,9 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSign
 
 function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, tradeSignal, action) {
     const pl = formatPlPct(profitPct, cost);
-    const fvLine = formatFairValueLine(asset.name);
+    const opp = formatFvOpportunity(asset.name);
     const price = getPrice(asset.name);
     const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
-    const costText = asset.avgCost > 0 ? '$' + fmt(asset.avgCost, 2) : '—';
-    const costCls = asset.avgCost > 0 ? '' : ' muted';
     return `
             <div class="asset-stats">
                 <div class="stat-pair">
@@ -1824,14 +1830,13 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                 </div>
                 <div class="stat-pair">
                     <div class="stat-col">
-                        <span class="stat-label">ราคา · ทุน</span>
-                        <span class="stat-num asset-cost${costCls}">${costText}</span>
+                        <span class="stat-label">ทุน · P/L</span>
+                        <span class="stat-num asset-cost-pl ${pl.cls}">${pl.text}</span>
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">ราคา · ปัจจุบัน</span>
                         <span class="stat-num asset-price hi">${priceText}</span>
-                        <span class="stat-sub asset-fv ${fvLine.cls}">${fvLine.text}</span>
-                        <span class="stat-sub asset-pl-pct ${pl.cls}">${pl.text}</span>
+                        <span class="stat-sub asset-fv-opp ${opp.cls}">${opp.text}</span>
                     </div>
                 </div>
                 ${renderAdviceRow(tradeSignal, action)}
