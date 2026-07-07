@@ -870,6 +870,19 @@
                     <div class="setting-hint">บันทึกอัตโนมัติทุกอุปกรณ์ — ไม่ต้องล็อกอิน</div>
                 </div>
             </div>
+            <div class="settings-section">
+                <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('group-panel')">
+                    <span class="settings-toggle-text">เป้าสัดส่วนกลุ่ม</span>
+                    <span class="settings-toggle-meta" id="group-targets-meta">—</span>
+                    <span class="settings-chevron">▼</span>
+                </button>
+                <div class="settings-panel hidden" id="group-panel">
+                    <div class="setting-hint">ปันผล · Growth · Alpha — รวมต้องได้ 100.00%</div>
+                    <div id="group-target-inputs"></div>
+                    <div class="setting-hint" id="group-target-sum" style="margin-top:8px"></div>
+                    <div class="setting-hint">ปรับกลุ่มแล้วสัดส่วนหุ้นในกลุ่มจะถูกปรับตามสัดส่วนเดิม</div>
+                </div>
+            </div>
             <div class="settings-section" id="signal-settings-section">
                 <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('signal-panel')">
                     <span class="settings-toggle-text">สัญญาณซื้อขาย</span>
@@ -1354,10 +1367,67 @@ function updateTabUI() {
     const squadPct = getTargetByGroup(activeTab);
     document.getElementById('squad-note').textContent =
         `${g.hint} · เป้าทัพนี้ ${fmtPct(squadPct)} · รวมทั้งพอร์ตต้องครบ 100.00%`;
+    updateGroupTargetSum();
+}
+
+function renderGroupTargetSettings() {
+    const el = document.getElementById('group-target-inputs');
+    if (!el) return;
+    el.innerHTML = GROUP_ORDER.map(g => {
+        const val = getTargetByGroup(g);
+        const count = myPortfolio.filter(a => getAssetGroup(a) === g).length;
+        return `<div class="tier-row" style="margin-bottom:8px">
+            <label style="width:54px">${TAB_LABELS[g]}</label>
+            <input class="setting-input" type="text" inputmode="decimal"
+                value="${formatInputVal(val)}"
+                ${count ? '' : 'placeholder="0.00"'}
+                oninput="updateGroupTarget('${g}', this.value)">
+            <span class="setting-suffix">%</span>
+        </div>`;
+    }).join('');
+    updateGroupTargetSum();
+}
+
+function updateGroupTargetSum() {
+    const sum = GROUP_ORDER.reduce((s, g) => s + getTargetByGroup(g), 0);
+    const el = document.getElementById('group-target-sum');
+    const meta = document.getElementById('group-targets-meta');
+    const ok = Math.abs(sum - 100) < 0.01;
+    const text = `รวม ${fmtPct(sum)}` + (ok ? ' ✓' : ' ⚠');
+    if (el) {
+        el.textContent = text;
+        el.style.color = ok ? 'var(--green)' : '#b7791f';
+    }
+    if (meta) meta.textContent = GROUP_ORDER.map(g => fmtPct(getTargetByGroup(g))).join(' · ');
+}
+
+function setGroupTarget(group, pct) {
+    const assets = myPortfolio.filter(a => getAssetGroup(a) === group);
+    if (!assets.length) return;
+    const oldSum = assets.reduce((s, a) => s + (a.target || 0), 0);
+    if (oldSum <= 0) {
+        const each = pct / assets.length;
+        assets.forEach(a => { a.target = each; });
+    } else {
+        const ratio = pct / oldSum;
+        assets.forEach(a => { a.target = (a.target || 0) * ratio; });
+    }
+}
+
+function updateGroupTarget(group, val) {
+    const trimmed = String(val).trim();
+    if (trimmed === '' || trimmed === '.' || trimmed === '-') return;
+    const pct = parseFloat(trimmed);
+    if (isNaN(pct) || pct < 0) return;
+    setGroupTarget(group, pct);
+    schedulePersistPortfolio();
+    recalculate();
+    updateTabUI();
 }
 
 function openSettingsSheet() {
     document.getElementById('profit-settings-section').classList.toggle('hidden', !showProfitTaking());
+    renderGroupTargetSettings();
     document.getElementById('settings-overlay').classList.add('open');
 }
 
@@ -1786,6 +1856,10 @@ function recalculate() {
     if (assetSheetIndex != null) {
         const item = assets.find(a => a.index === assetSheetIndex);
         if (item) updateAssetSheetLive(item);
+    }
+
+    if (document.getElementById('settings-overlay')?.classList.contains('open')) {
+        renderGroupTargetSettings();
     }
 }
 
