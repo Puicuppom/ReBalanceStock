@@ -831,15 +831,14 @@
             <div class="settings-section" id="signal-settings-section">
                 <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('signal-panel')">
                     <span class="settings-toggle-text">สัญญาณซื้อขาย</span>
-                    <span class="settings-toggle-meta">FV + แนวรับ/ต้าน</span>
+                    <span class="settings-toggle-meta">ราคายุติธรรม</span>
                     <span class="settings-chevron">▼</span>
                 </button>
                 <div class="settings-panel hidden" id="signal-panel">
                     <div class="setting-hint">ราคายุติธรรมจาก Yahoo (เป้านักวิเคราะห์ / P/E อ้างอิง)</div>
                     <div class="buy-item">
-                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ถูกกว่า FV &gt;10% · ใกล้แนวรับ (1%)</div>
-                        <div class="setting-hint">ขาย: แพงกว่า FV &gt;10% · ใกล้แนวต้าน · ทำกำไร (Growth/Alpha)</div>
-                        <div class="setting-hint">ถือ: ใกล้ราคายุติธรรม ±10%</div>
+                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ราคาต่ำกว่าราคายุติธรรม</div>
+                        <div class="setting-hint">ขาย: ราคาสูงกว่าราคายุติธรรม</div>
                     </div>
                 </div>
             </div>
@@ -1050,13 +1049,11 @@ async function fetchPrices(fullRender = false) {
                     price: data.price,
                     at: Date.now(),
                     fairValue: data.fairValue || null,
-                    srHits: data.srHits || [],
                 };
             } else {
                 priceCache[symbol] = {
                     price: priceCache[symbol]?.price || 0,
                     fairValue: priceCache[symbol]?.fairValue || null,
-                    srHits: priceCache[symbol]?.srHits || [],
                     error: true,
                 };
             }
@@ -1064,7 +1061,6 @@ async function fetchPrices(fullRender = false) {
             priceCache[symbol] = {
                 price: priceCache[symbol]?.price || 0,
                 fairValue: priceCache[symbol]?.fairValue || null,
-                srHits: priceCache[symbol]?.srHits || [],
                 error: true,
             };
         }
@@ -1476,56 +1472,29 @@ function getStockData(symbol) {
 function formatFairValueLine(symbol) {
     const fv = getStockData(symbol).fairValue;
     if (!fv?.fairValue) return { text: '—', cls: 'muted' };
-    const up = fv.upsidePercent;
-    const sign = up != null && up >= 0 ? '+' : '';
+    const price = getPrice(symbol);
+    let cls = 'muted';
+    if (price > 0) {
+        if (price < fv.fairValue) cls = 'gain';
+        else if (price > fv.fairValue) cls = 'loss';
+    }
     return {
-        text: `FV $${fmt(fv.fairValue, 2)} · ${sign}${up != null ? up.toFixed(0) : '—'}%`,
-        cls: fv.verdict === 'undervalued' ? 'gain' : fv.verdict === 'overvalued' ? 'loss' : 'muted',
+        text: `ยุติธรรม $${fmt(fv.fairValue, 2)}`,
+        cls,
     };
 }
 
-function getTradeSignal(profitAdvice, asset) {
-    const stock = getStockData(asset.name);
-    const fv = stock.fairValue;
-    const hits = stock.srHits || [];
-    const nearRes = hits.find(h => h.kind === 'resistance');
-    const nearSup = hits.find(h => h.kind === 'support');
-
-    if (showProfitTaking() && profitAdvice) {
-        return { text: 'ขาย', sub: profitAdvice.sub || '', cls: 'sell' };
+function getTradeSignal(asset) {
+    const fv = getStockData(asset.name).fairValue;
+    const price = getPrice(asset.name) || asset.price || 0;
+    if (!fv?.fairValue || price <= 0) {
+        return { text: '—', sub: '', cls: 'hold' };
     }
-    if (nearRes) {
-        return {
-            text: 'ขาย',
-            sub: `${nearRes.level.label} $${fmt(nearRes.level.price, 2)} · ใกล้แนวต้าน`,
-            cls: 'sell',
-        };
+    if (price < fv.fairValue) {
+        return { text: 'ซื้อ', sub: '', cls: 'buy' };
     }
-    if (fv?.verdict === 'overvalued' && fv.upsidePercent != null) {
-        return {
-            text: 'ขาย',
-            sub: `FV $${fmt(fv.fairValue, 2)} · แพง ${Math.abs(fv.upsidePercent).toFixed(0)}%`,
-            cls: 'sell',
-        };
-    }
-    if (nearSup) {
-        const suggest = asset.value > 0 ? asset.value * 0.1 : 0;
-        return {
-            text: 'ซื้อ',
-            sub: `${nearSup.level.label} $${fmt(nearSup.level.price, 2)}${suggest ? ` · ~$${fmt(suggest, 0)}` : ''}${formatShareAdvice(suggest, asset)}`,
-            cls: 'buy',
-        };
-    }
-    if (fv?.verdict === 'undervalued' && fv.upsidePercent != null) {
-        const suggest = asset.value > 0 ? asset.value * 0.1 : 0;
-        return {
-            text: 'ซื้อ',
-            sub: `FV $${fmt(fv.fairValue, 2)} · ถูก +${fv.upsidePercent.toFixed(0)}%${suggest ? ` · ~$${fmt(suggest, 0)}` : ''}${formatShareAdvice(suggest, asset)}`,
-            cls: 'buy',
-        };
-    }
-    if (fv?.fairValue) {
-        return { text: 'ถือ', sub: `FV $${fmt(fv.fairValue, 2)} · ใกล้เคียง`, cls: 'hold' };
+    if (price > fv.fairValue) {
+        return { text: 'ขาย', sub: '', cls: 'sell' };
     }
     return { text: 'ถือ', sub: '', cls: 'hold' };
 }
@@ -1614,10 +1583,8 @@ function computePortfolio() {
         const cost = asset.cost || 0;
         const profit = cost > 0 ? asset.value - cost : 0;
         const profitPct = cost > 0 ? (profit / cost) * 100 : 0;
-        const profitAdvice = getProfitAdvice(asset, profitPct, cost);
-        const buyAlerts = getBuyAlerts(asset, diff, curPct);
-        const tradeSignal = getTradeSignal(profitAdvice, asset);
-        return { index, asset, curPct, ideal, diff, action: getAction(diff, asset), cost, profit, profitPct, profitAdvice, buyAlerts, tradeSignal };
+        const tradeSignal = getTradeSignal(asset);
+        return { index, asset, curPct, ideal, diff, action: getAction(diff, asset), cost, profit, profitPct, tradeSignal };
     });
 
     return { totalValue, totalTarget, assets };

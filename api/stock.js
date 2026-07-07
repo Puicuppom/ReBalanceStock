@@ -1,10 +1,5 @@
 const { USER_AGENT } = require('./lib/yahoo-auth');
 const { fetchFundamentals, calculateFairValue } = require('./lib/fair-value');
-const { findSwingPoints, clusterZones, topZones } = require('./lib/swing');
-const { findSrHits } = require('./lib/sr-levels');
-
-const SWING_LOOKBACK = 126;
-const SR_TOLERANCE = 1;
 
 async function fetchChart(symbol) {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
@@ -60,10 +55,6 @@ module.exports = async function handler(req, res) {
 
     const last = candles[candles.length - 1];
     const price = chart.marketPrice ?? last.close;
-    const swingCandles = candles.slice(-SWING_LOOKBACK);
-    const swings = findSwingPoints(swingCandles, 5);
-    const zones = topZones(clusterZones(swings), last.close, 4);
-    const srHits = findSrHits(zones, price, SR_TOLERANCE);
     const fairValue = calculateFairValue('US', price, fundamentals);
 
     return res.status(200).json({
@@ -72,7 +63,6 @@ module.exports = async function handler(req, res) {
       currency: chart.currency,
       updated: Date.now(),
       fairValue,
-      srHits,
     });
   } catch (err) {
     return res.status(500).json({ error: 'fetch failed', symbol, message: err?.message });
