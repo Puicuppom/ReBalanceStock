@@ -409,8 +409,7 @@
             line-height: 1.25;
         }
         .asset-stats .stat-num.asset-rebalance,
-        .asset-stats .stat-sub.asset-trade-detail,
-        .asset-stats .stat-sub.asset-fv-opp {
+        .asset-stats .stat-sub.asset-trade-detail {
             white-space: normal;
             overflow: visible;
             text-overflow: unset;
@@ -544,13 +543,39 @@
             letter-spacing: -0.5px;
         }
         .asset-name {
-            flex: 1;
+            flex: 0 1 auto;
             min-width: 0;
+            max-width: 32%;
             font-weight: 700;
             font-size: 13px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+        .asset-fv-head {
+            flex: 1;
+            min-width: 0;
+            text-align: right;
+            line-height: 1.2;
+            padding: 0 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .asset-fv-label {
+            display: block;
+            font-size: 8px;
+            font-weight: 600;
+            color: #a0aec0;
+        }
+        .asset-fv-price {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+        .asset-fv-opp {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
         }
         .asset-action {
             flex-shrink: 0;
@@ -1483,20 +1508,53 @@ function getStockData(symbol) {
     return priceCache[symbol] || {};
 }
 
-function formatFvOpportunity(symbol) {
+function formatFvHeader(symbol) {
     const fv = getStockData(symbol).fairValue;
     const price = getPrice(symbol);
-    if (!fv?.fairValue || !price || price <= 0) return { text: '—', cls: 'muted' };
+    if (!fv?.fairValue) return { fv: '—', opp: '', oppCls: 'muted' };
     const up = fv.upsidePercent != null
         ? fv.upsidePercent
-        : ((fv.fairValue - price) / price) * 100;
+        : (price > 0 ? ((fv.fairValue - price) / price) * 100 : null);
+    const fvText = `$${fmt(fv.fairValue, 2)}`;
+    if (up == null) return { fv: fvText, opp: '', oppCls: 'muted' };
     const sign = up > 0 ? '+' : '';
-    const text = up > 0
-        ? `${sign}${up.toFixed(1)}% โอกาสกำไร`
-        : up < 0
-            ? `${up.toFixed(1)}% เสี่ยงขาดทุน`
-            : 'ตามยุติธรรม';
-    return { text, cls: up > 0 ? 'gain' : up < 0 ? 'loss' : 'muted' };
+    return {
+        fv: fvText,
+        opp: `${sign}${up.toFixed(1)}%`,
+        oppCls: up > 0 ? 'gain' : up < 0 ? 'loss' : 'muted',
+    };
+}
+
+function formatCostCell(asset, profitPct, cost) {
+    const pl = formatPlPct(profitPct, cost);
+    return {
+        main: asset.avgCost > 0 ? `$${fmt(asset.avgCost, 2)}` : '—',
+        mainCls: asset.avgCost > 0 ? '' : 'muted',
+        sub: pl.text,
+        subCls: pl.cls,
+    };
+}
+
+function renderFvHeaderHtml(symbol) {
+    const h = formatFvHeader(symbol);
+    const oppStyle = h.opp ? '' : ' style="display:none"';
+    return `<div class="asset-fv-head">
+                <span class="asset-fv-label">ยุติธรรม</span>
+                <span class="asset-fv-price">${h.fv}</span>
+                <span class="asset-fv-opp ${h.oppCls}"${oppStyle}>${h.opp}</span>
+            </div>`;
+}
+
+function updateFvHeader(card, symbol) {
+    const h = formatFvHeader(symbol);
+    const priceEl = card.querySelector('.asset-fv-price');
+    const oppEl = card.querySelector('.asset-fv-opp');
+    if (priceEl) priceEl.textContent = h.fv;
+    if (oppEl) {
+        oppEl.textContent = h.opp;
+        oppEl.className = 'asset-fv-opp ' + h.oppCls;
+        oppEl.style.display = h.opp ? '' : 'none';
+    }
 }
 
 function formatTradeAmount(usd, asset) {
@@ -1690,11 +1748,16 @@ function recalculate() {
         const valEl = card.querySelector('.asset-value');
         if (valEl) valEl.textContent = '$' + fmt(asset.value, 0);
 
-        const pl = formatPlPct(profitPct, cost);
+        const costCell = formatCostCell(asset, profitPct, cost);
+        const costPriceEl = card.querySelector('.asset-cost-price');
+        if (costPriceEl) {
+            costPriceEl.textContent = costCell.main;
+            costPriceEl.className = 'stat-num asset-cost-price ' + costCell.mainCls;
+        }
         const costPlEl = card.querySelector('.asset-cost-pl');
         if (costPlEl) {
-            costPlEl.textContent = pl.text;
-            costPlEl.className = 'stat-num asset-cost-pl ' + pl.cls;
+            costPlEl.textContent = costCell.sub;
+            costPlEl.className = 'stat-sub asset-cost-pl ' + costCell.subCls;
         }
 
         const price = getPrice(asset.name);
@@ -1704,12 +1767,7 @@ function recalculate() {
             priceEl.className = 'stat-num asset-price hi';
         }
 
-        const opp = formatFvOpportunity(asset.name);
-        const oppEl = card.querySelector('.asset-fv-opp');
-        if (oppEl) {
-            oppEl.textContent = opp.text;
-            oppEl.className = 'stat-sub asset-fv-opp ' + opp.cls;
-        }
+        updateFvHeader(card, asset.name);
 
         updateAdviceRow(card, tradeSignal, action);
     });
@@ -1802,8 +1860,7 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSign
 }
 
 function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, tradeSignal, action) {
-    const pl = formatPlPct(profitPct, cost);
-    const opp = formatFvOpportunity(asset.name);
+    const costCell = formatCostCell(asset, profitPct, cost);
     const price = getPrice(asset.name);
     const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
     return `
@@ -1830,13 +1887,13 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                 </div>
                 <div class="stat-pair">
                     <div class="stat-col">
-                        <span class="stat-label">ทุน · P/L</span>
-                        <span class="stat-num asset-cost-pl ${pl.cls}">${pl.text}</span>
+                        <span class="stat-label">ทุน · ราคา</span>
+                        <span class="stat-num asset-cost-price ${costCell.mainCls}">${costCell.main}</span>
+                        <span class="stat-sub asset-cost-pl ${costCell.subCls}">${costCell.sub}</span>
                     </div>
                     <div class="stat-col">
                         <span class="stat-label">ราคา · ปัจจุบัน</span>
                         <span class="stat-num asset-price hi">${priceText}</span>
-                        <span class="stat-sub asset-fv-opp ${opp.cls}">${opp.text}</span>
                     </div>
                 </div>
                 ${renderAdviceRow(tradeSignal, action)}
@@ -1859,6 +1916,7 @@ function appendAssetCard(list, payload) {
             <span class="drag-handle" aria-label="สลับลำดับ ${asset.name}">≡</span>
             <div class="asset-badge">${asset.name.slice(0, 4)}</div>
             <div class="asset-name">${asset.name}</div>
+            ${renderFvHeaderHtml(asset.name)}
             <button class="btn-card-gear" type="button" aria-label="ตั้งค่า ${asset.name}" onclick="openAssetSheet(${index})">⚙</button>
             <button class="btn-delete" type="button" aria-label="ลบ ${asset.name}" onclick="deleteAsset(${index})">×</button>
         </div>
