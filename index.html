@@ -134,19 +134,19 @@
             border-radius: 8px;
             cursor: pointer;
         }
-        .btn-sync.synced { border-color: #9ae6b4; }
+        .btn-sync.synced { border-color: #48bb78; background: rgba(72,187,120,0.25); }
         .btn-sync.syncing { opacity: 0.7; }
         .btn-sync.error { border-color: #feb2b2; }
         .sync-dot {
             position: absolute;
-            top: 4px;
-            right: 4px;
-            width: 6px;
-            height: 6px;
+            top: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: var(--muted);
         }
-        .btn-sync.synced .sync-dot { background: #48bb78; }
+        .btn-sync.synced .sync-dot { background: #38a169; box-shadow: 0 0 0 2px rgba(56,161,105,0.35); }
         .btn-sync.syncing .sync-dot { background: #ecc94b; }
         .btn-sync.error .sync-dot { background: #fc8181; }
         .price-meta {
@@ -806,10 +806,6 @@
 
     <div class="squad-note" id="squad-note"></div>
 
-    <div class="rebalance-summary hidden" id="rebalance-summary">
-        <div class="rebalance-box" id="rebalance-text"></div>
-    </div>
-
     <div class="list-wrap" id="assets-list"></div>
 </div>
 
@@ -832,21 +828,18 @@
                     <div class="setting-hint">บันทึกอัตโนมัติทุกอุปกรณ์ — ไม่ต้องล็อกอิน</div>
                 </div>
             </div>
-            <div class="settings-section" id="buy-settings-section">
-                <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('buy-panel')">
-                    <span class="settings-toggle-text">แจ้งซื้อ</span>
-                    <span class="settings-toggle-meta" id="buy-panel-summary">ร่วง 10%</span>
+            <div class="settings-section" id="signal-settings-section">
+                <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('signal-panel')">
+                    <span class="settings-toggle-text">สัญญาณซื้อขาย</span>
+                    <span class="settings-toggle-meta">FV + แนวรับ/ต้าน</span>
                     <span class="settings-chevron">▼</span>
                 </button>
-                <div class="settings-panel hidden" id="buy-panel">
-                    <div class="setting-hint">ปรับสัดส่วนอัตโนมัติ · ซื้อเมื่อร่วงจากจุดสูงสุด</div>
+                <div class="settings-panel hidden" id="signal-panel">
+                    <div class="setting-hint">ราคายุติธรรมจาก Yahoo (เป้านักวิเคราะห์ / P/E อ้างอิง)</div>
                     <div class="buy-item">
-                        <div class="tier-row">
-                            <label style="width:auto">ร่วง</label>
-                            <input class="setting-input" id="dip-buy-pct" type="number" inputmode="decimal" value="10"
-                                oninput="updateDipBuy(this.value)">
-                            <span class="setting-suffix">% จากสูงสุด → แจ้งซื้อ</span>
-                        </div>
+                        <div class="setting-hint" style="margin-top:6px">ซื้อ: ถูกกว่า FV &gt;10% · ใกล้แนวรับ (1%)</div>
+                        <div class="setting-hint">ขาย: แพงกว่า FV &gt;10% · ใกล้แนวต้าน · ทำกำไร (Growth/Alpha)</div>
+                        <div class="setting-hint">ถือ: ใกล้ราคายุติธรรม ±10%</div>
                     </div>
                 </div>
             </div>
@@ -1050,15 +1043,30 @@ async function fetchPrices(fullRender = false) {
 
     await Promise.all(symbols.map(async (symbol) => {
         try {
-            const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
+            const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}`);
             const data = await res.json();
             if (res.ok && data.price) {
-                priceCache[symbol] = { price: data.price, at: Date.now() };
+                priceCache[symbol] = {
+                    price: data.price,
+                    at: Date.now(),
+                    fairValue: data.fairValue || null,
+                    srHits: data.srHits || [],
+                };
             } else {
-                priceCache[symbol] = { price: priceCache[symbol]?.price || 0, error: true };
+                priceCache[symbol] = {
+                    price: priceCache[symbol]?.price || 0,
+                    fairValue: priceCache[symbol]?.fairValue || null,
+                    srHits: priceCache[symbol]?.srHits || [],
+                    error: true,
+                };
             }
         } catch {
-            priceCache[symbol] = { price: priceCache[symbol]?.price || 0, error: true };
+            priceCache[symbol] = {
+                price: priceCache[symbol]?.price || 0,
+                fairValue: priceCache[symbol]?.fairValue || null,
+                srHits: priceCache[symbol]?.srHits || [],
+                error: true,
+            };
         }
     }));
 
@@ -1133,9 +1141,6 @@ function applyCloudData(cloud) {
     if (typeof cloud.dipBuyPct === 'number') {
         dipBuyPct = cloud.dipBuyPct;
         localStorage.setItem('dipBuyPct', String(dipBuyPct));
-        const dipEl = document.getElementById('dip-buy-pct');
-        if (dipEl) dipEl.value = dipBuyPct;
-        updateBuyPanelSummary();
     }
     if (GROUP_ORDER.includes(cloud.activeTab)) {
         activeTab = cloud.activeTab;
@@ -1227,6 +1232,7 @@ async function loadFromCloud() {
 
     if (cloudUpdated > localUpdated || cloudPayloadUpdated > localUpdated) {
         applyCloudData(cloud);
+        setSyncStatus('synced');
     } else if (localUpdated > cloudUpdated) {
         await saveToCloud();
     } else {
@@ -1323,11 +1329,6 @@ function toggleSettingsPanel(id) {
     const willOpen = panel.classList.contains('hidden');
     panel.classList.toggle('hidden');
     section.classList.toggle('open', willOpen);
-}
-
-function updateBuyPanelSummary() {
-    const el = document.getElementById('buy-panel-summary');
-    if (el) el.textContent = `ร่วง ${dipBuyPct}%`;
 }
 
 updateTabUI();
@@ -1468,17 +1469,63 @@ function getProfitAdvice(asset, profitPct, cost) {
     return null;
 }
 
-function getTradeSignal(profitAdvice, buyAlerts, asset) {
+function getStockData(symbol) {
+    return priceCache[symbol] || {};
+}
+
+function formatFairValueLine(symbol) {
+    const fv = getStockData(symbol).fairValue;
+    if (!fv?.fairValue) return { text: '—', cls: 'muted' };
+    const up = fv.upsidePercent;
+    const sign = up != null && up >= 0 ? '+' : '';
+    return {
+        text: `FV $${fmt(fv.fairValue, 2)} · ${sign}${up != null ? up.toFixed(0) : '—'}%`,
+        cls: fv.verdict === 'undervalued' ? 'gain' : fv.verdict === 'overvalued' ? 'loss' : 'muted',
+    };
+}
+
+function getTradeSignal(profitAdvice, asset) {
+    const stock = getStockData(asset.name);
+    const fv = stock.fairValue;
+    const hits = stock.srHits || [];
+    const nearRes = hits.find(h => h.kind === 'resistance');
+    const nearSup = hits.find(h => h.kind === 'support');
+
     if (showProfitTaking() && profitAdvice) {
         return { text: 'ขาย', sub: profitAdvice.sub || '', cls: 'sell' };
     }
-    const dip = buyAlerts.find(a => a.type === 'dip');
-    if (dip) {
+    if (nearRes) {
+        return {
+            text: 'ขาย',
+            sub: `${nearRes.level.label} $${fmt(nearRes.level.price, 2)} · ใกล้แนวต้าน`,
+            cls: 'sell',
+        };
+    }
+    if (fv?.verdict === 'overvalued' && fv.upsidePercent != null) {
+        return {
+            text: 'ขาย',
+            sub: `FV $${fmt(fv.fairValue, 2)} · แพง ${Math.abs(fv.upsidePercent).toFixed(0)}%`,
+            cls: 'sell',
+        };
+    }
+    if (nearSup) {
+        const suggest = asset.value > 0 ? asset.value * 0.1 : 0;
         return {
             text: 'ซื้อ',
-            sub: `$${fmt(dip.amount, 0)}${formatShareAdvice(dip.amount, asset)} · ร่วง ${dip.dropFromPeak.toFixed(0)}%`,
-            cls: 'buy'
+            sub: `${nearSup.level.label} $${fmt(nearSup.level.price, 2)}${suggest ? ` · ~$${fmt(suggest, 0)}` : ''}${formatShareAdvice(suggest, asset)}`,
+            cls: 'buy',
         };
+    }
+    if (fv?.verdict === 'undervalued' && fv.upsidePercent != null) {
+        const suggest = asset.value > 0 ? asset.value * 0.1 : 0;
+        return {
+            text: 'ซื้อ',
+            sub: `FV $${fmt(fv.fairValue, 2)} · ถูก +${fv.upsidePercent.toFixed(0)}%${suggest ? ` · ~$${fmt(suggest, 0)}` : ''}${formatShareAdvice(suggest, asset)}`,
+            cls: 'buy',
+        };
+    }
+    if (fv?.fairValue) {
+        return { text: 'ถือ', sub: `FV $${fmt(fv.fairValue, 2)} · ใกล้เคียง`, cls: 'hold' };
     }
     return { text: 'ถือ', sub: '', cls: 'hold' };
 }
@@ -1494,22 +1541,15 @@ function updateTier(index, field, val) {
 renderTierSettings();
 
 let dipBuyPct = parseFloat(localStorage.getItem('dipBuyPct')) || 10;
-document.getElementById('dip-buy-pct').value = dipBuyPct;
-updateBuyPanelSummary();
 
 function updateDipBuy(val) {
     dipBuyPct = parseFloat(val) || 0;
     localStorage.setItem('dipBuyPct', dipBuyPct);
-    updateBuyPanelSummary();
     scheduleCloudSave();
-    recalculate();
 }
 
 function getBuyAlerts(asset, diff, curPct) {
-    const peak = asset.peakValue || asset.value || 0;
-    const dropFromPeak = peak > 0 ? ((peak - asset.value) / peak) * 100 : 0;
     const alerts = [];
-
     if (diff > 0.01) {
         alerts.push({
             type: 'rebalance',
@@ -1518,18 +1558,6 @@ function getBuyAlerts(asset, diff, curPct) {
             text: `ปรับสัดส่วน $${fmt(diff, 0)} (ต่ำเป้า ${(asset.target - curPct).toFixed(1)}%)`
         });
     }
-
-    if (dropFromPeak >= dipBuyPct && peak > asset.value) {
-        const dipAmount = diff > 0.01 ? diff : asset.value * 0.1;
-        alerts.push({
-            type: 'dip',
-            amount: dipAmount,
-            dropFromPeak,
-            peak,
-            text: `ร่วง ${dropFromPeak.toFixed(0)}% จาก $${fmt(peak, 0)} → ซื้อ $${fmt(dipAmount, 0)}`
-        });
-    }
-
     return alerts;
 }
 
@@ -1588,7 +1616,7 @@ function computePortfolio() {
         const profitPct = cost > 0 ? (profit / cost) * 100 : 0;
         const profitAdvice = getProfitAdvice(asset, profitPct, cost);
         const buyAlerts = getBuyAlerts(asset, diff, curPct);
-        const tradeSignal = getTradeSignal(profitAdvice, buyAlerts, asset);
+        const tradeSignal = getTradeSignal(profitAdvice, asset);
         return { index, asset, curPct, ideal, diff, action: getAction(diff, asset), cost, profit, profitPct, profitAdvice, buyAlerts, tradeSignal };
     });
 
@@ -1614,54 +1642,6 @@ function updateSummary(totalValue, totalTarget, assets) {
     targetEl.textContent = totalTarget + '%' + (totalTarget !== 100 ? ' ⚠' : ' ✓');
     breakdownEl.textContent = `Income ${incomeTarget}% · Growth ${growthTarget}% · Alpha ${alphaTarget}%`;
     updateTabUI();
-
-    const summaryEl = document.getElementById('rebalance-summary');
-    const textEl = document.getElementById('rebalance-text');
-    const rebalanceBuys = [], dipBuys = [], sells = [], takeProfits = [];
-    let totalBuy = 0, totalSell = 0;
-
-    assets.forEach(({ asset, diff, profitPct, profitAdvice, buyAlerts }) => {
-        if (diff < -0.01) {
-            sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}${formatShareAdvice(Math.abs(diff), asset)}`);
-            totalSell += Math.abs(diff);
-        }
-
-        buyAlerts.forEach(alert => {
-            if (alert.type === 'rebalance') {
-                rebalanceBuys.push(`${asset.name} $${fmt(alert.amount, 0)}${formatShareAdvice(alert.amount, asset)}`);
-                totalBuy += alert.amount;
-            } else if (alert.type === 'dip') {
-                dipBuys.push(`${asset.name} −${alert.dropFromPeak.toFixed(0)}% → $${fmt(alert.amount, 0)}${formatShareAdvice(alert.amount, asset)}`);
-            }
-        });
-
-        if (showProfitTaking() && profitAdvice) {
-            const sharePart = formatShareAdvice(profitAdvice.sellAmount, asset);
-            takeProfits.push(`${asset.name} ขาย $${fmt(profitAdvice.sellAmount, 0)}${sharePart} (${profitAdvice.sellPct}%)`);
-        }
-    });
-
-    let html = '';
-    if (takeProfits.length) {
-        html += `<div class="profit-line">🔴 สัญญาณขาย: ${takeProfits.join(' · ')}</div>`;
-    }
-    if (rebalanceBuys.length) {
-        html += `<div class="buy-alert-line">🔵 ซื้อปรับสัดส่วน: ${rebalanceBuys.join(', ')} (รวม $${fmt(totalBuy, 0)})</div>`;
-    }
-    if (dipBuys.length) {
-        html += `<div class="dip-line">🟢 สัญญาณซื้อ: ${dipBuys.join(' · ')}</div>`;
-    }
-    if (sells.length) html += `<div class="sell-line">🔴 ขายปรับสัดส่วน: ${sells.join(', ')} (รวม $${fmt(totalSell, 0)})</div>`;
-
-    if (html) {
-        textEl.innerHTML = html;
-        summaryEl.classList.remove('hidden');
-    } else if (assets.length) {
-        textEl.innerHTML = '<div class="hold-line">✓ พอร์ตสมดุลแล้ว — ไม่ต้องซื้อขาย</div>';
-        summaryEl.classList.remove('hidden');
-    } else {
-        summaryEl.classList.add('hidden');
-    }
 }
 
 function renderAdviceRow(tradeSignal, action) {
@@ -1739,6 +1719,13 @@ function recalculate() {
         if (plEl) {
             plEl.textContent = pl.text;
             plEl.className = 'stat-sub asset-pl-pct ' + pl.cls;
+        }
+
+        const fvLine = formatFairValueLine(asset.name);
+        const fvEl = card.querySelector('.asset-fv');
+        if (fvEl) {
+            fvEl.textContent = fvLine.text;
+            fvEl.className = 'stat-sub asset-fv ' + fvLine.cls;
         }
 
         updateAdviceRow(card, tradeSignal, action);
@@ -1833,6 +1820,7 @@ function renderAssetSheetBody({ index, asset, cost, profit, profitPct, tradeSign
 
 function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, tradeSignal, action) {
     const pl = formatPlPct(profitPct, cost);
+    const fvLine = formatFairValueLine(asset.name);
     const price = getPrice(asset.name);
     const priceText = price > 0 ? '$' + fmt(price, 2) : '…';
     const costText = asset.avgCost > 0 ? '$' + fmt(asset.avgCost, 2) : '—';
@@ -1867,6 +1855,7 @@ function renderAssetCard(index, asset, curPct, ideal, cost, profit, profitPct, t
                     <div class="stat-col">
                         <span class="stat-label">ราคา · ปัจจุบัน</span>
                         <span class="stat-num asset-price hi">${priceText}</span>
+                        <span class="stat-sub asset-fv ${fvLine.cls}">${fvLine.text}</span>
                         <span class="stat-sub asset-pl-pct ${pl.cls}">${pl.text}</span>
                     </div>
                 </div>
@@ -2131,6 +2120,7 @@ async function bootstrap() {
     await initCloudSync();
     renderAndCalculate();
     fetchPrices(true);
+    setSyncStatus('synced');
 }
 
 bootstrap();
