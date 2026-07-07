@@ -945,13 +945,28 @@ function getAssetRole(name) {
 }
 
 function mergeDefaultPortfolio(list) {
+    const removed = new Set(deletedAssets.map(n => n.toUpperCase()));
     const names = new Set(list.map(a => a.name));
     defaultAssets.forEach(d => {
-        if (!names.has(d.name)) {
+        if (!names.has(d.name) && !removed.has(d.name)) {
             list.push({ ...d, peakValue: 0, tiersDone: [false, false, false] });
         }
     });
     return list;
+}
+
+function markAssetDeleted(name) {
+    const sym = String(name).toUpperCase();
+    if (!deletedAssets.includes(sym)) {
+        deletedAssets.push(sym);
+        localStorage.setItem('deletedAssets', JSON.stringify(deletedAssets));
+    }
+}
+
+function unmarkAssetDeleted(name) {
+    const sym = String(name).toUpperCase();
+    deletedAssets = deletedAssets.filter(n => n !== sym);
+    localStorage.setItem('deletedAssets', JSON.stringify(deletedAssets));
 }
 
 function applyStrategyMigration(list) {
@@ -980,6 +995,8 @@ function sortPortfolioByGroup() {
 
 let priceCache = {};
 let priceFetching = false;
+
+let deletedAssets = JSON.parse(localStorage.getItem('deletedAssets') || '[]');
 
 let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || defaultAssets;
 myPortfolio = mergeDefaultPortfolio(myPortfolio);
@@ -1075,7 +1092,9 @@ function setSyncStatus(state) {
 }
 
 function normalizePortfolioList(list, skipMigration = false) {
-    list = mergeDefaultPortfolio(list || []);
+    const removed = new Set(deletedAssets.map(n => n.toUpperCase()));
+    list = (list || []).filter(a => !removed.has(String(a.name).toUpperCase()));
+    list = mergeDefaultPortfolio(list);
     if (!skipMigration) list = applyStrategyMigration(list);
     return list.map(a => {
         const kind = a.kind || inferKind(a.name);
@@ -1094,6 +1113,10 @@ function normalizePortfolioList(list, skipMigration = false) {
 
 function applyCloudData(cloud) {
     if (!cloud) return;
+    if (Array.isArray(cloud.deletedAssets)) {
+        deletedAssets = cloud.deletedAssets.map(n => String(n).toUpperCase());
+        localStorage.setItem('deletedAssets', JSON.stringify(deletedAssets));
+    }
     if (Array.isArray(cloud.portfolio)) {
         myPortfolio = normalizePortfolioList(cloud.portfolio, true);
         sortPortfolioByGroup();
@@ -1139,6 +1162,7 @@ function getCloudPayload() {
         dipBuyPct,
         activeTab,
         strategyTargets: localStorage.getItem('strategyTargets') || '2',
+        deletedAssets,
         updatedAt: Date.now()
     };
 }
@@ -1146,6 +1170,11 @@ function getCloudPayload() {
 function scheduleCloudSave() {
     clearTimeout(cloudSaveTimer);
     cloudSaveTimer = setTimeout(saveToCloud, 900);
+}
+
+function flushCloudSave() {
+    clearTimeout(cloudSaveTimer);
+    return saveToCloud();
 }
 
 async function saveToCloud() {
@@ -1396,37 +1425,40 @@ function getProfitAdvice(asset, profitPct, cost) {
     const cumulative2 = (t1.sellPct || 0) + (t2.sellPct || 0);
     const remaining = Math.max(0, 100 - cumulative2);
 
-    if (peakProfitPct >= (t2.profitPct || 0) && profitPct > 0
+    if (peakProfitPct >= (t2.profitPct || 0) && profitPct >= (t1.profitPct || 0)
         && dropFromPeak >= (t3.trailingPct || 10) && remaining > 0) {
+        const sellAmount = asset.value * (remaining / 100);
         return {
             type: 'trailing',
             sellPct: remaining,
-            sellAmount: asset.value * (remaining / 100),
+            sellAmount,
             text: `แนะนำขาย ${remaining}%`,
-            sub: `Trailing −${dropFromPeak.toFixed(0)}% · $${fmt(asset.value * (remaining / 100), 0)}`
+            sub: `Trailing −${dropFromPeak.toFixed(0)}% · $${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)}`
         };
     }
 
     if (profitPct >= (t2.profitPct || 0)) {
+        const sellAmount = asset.value * (cumulative2 / 100);
         return {
             type: 'profit',
             tier: 2,
             sellPct: cumulative2,
-            sellAmount: asset.value * (cumulative2 / 100),
+            sellAmount,
             text: `แนะนำขาย ${cumulative2}%`,
-            sub: `$${fmt(asset.value * (cumulative2 / 100), 0)}`
+            sub: `$${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)}`
         };
     }
 
     if (profitPct >= (t1.profitPct || 0)) {
         const pct = t1.sellPct || 0;
+        const sellAmount = asset.value * (pct / 100);
         return {
             type: 'profit',
             tier: 1,
             sellPct: pct,
-            sellAmount: asset.value * (pct / 100),
+            sellAmount,
             text: `แนะนำขาย ${pct}%`,
-            sub: `$${fmt(asset.value * (pct / 100), 0)}`
+            sub: `$${fmt(sellAmount, 0)}${formatShareAdvice(sellAmount, asset)}`
         };
     }
 
@@ -1498,9 +1530,26 @@ function schedulePersistPortfolio() {
     persistDebounce = setTimeout(persistPortfolio, 600);
 }
 
-function getAction(diff) {
-    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ $${fmt(diff, 0)}` };
-    if (diff < -0.01) return { cls: 'sell', text: `ขาย $${fmt(Math.abs(diff), 0)}` };
+function getAssetPrice(asset) {
+    return getPrice(asset.name) || asset.price || 0;
+}
+
+function usdToShares(usd, asset) {
+    const price = getAssetPrice(asset);
+    if (!price || price <= 0 || !usd) return 0;
+    return usd / price;
+}
+
+function formatShareAdvice(usd, asset) {
+    const shares = usdToShares(usd, asset);
+    if (!shares) return '';
+    return ` · ${fmt(shares, 2)} หุ้น`;
+}
+
+function getAction(diff, asset) {
+    const sharePart = formatShareAdvice(Math.abs(diff), asset);
+    if (diff > 0.01) return { cls: 'buy', text: `ซื้อ $${fmt(diff, 0)}${sharePart}` };
+    if (diff < -0.01) return { cls: 'sell', text: `ขาย $${fmt(Math.abs(diff), 0)}${sharePart}` };
     return { cls: 'hold', text: 'สมดุล' };
 }
 
@@ -1521,7 +1570,7 @@ function computePortfolio() {
         const profitPct = cost > 0 ? (profit / cost) * 100 : 0;
         const profitAdvice = getProfitAdvice(asset, profitPct, cost);
         const buyAlerts = getBuyAlerts(asset, diff, curPct);
-        return { index, asset, curPct, ideal, diff, action: getAction(diff), cost, profit, profitPct, profitAdvice, buyAlerts };
+        return { index, asset, curPct, ideal, diff, action: getAction(diff, asset), cost, profit, profitPct, profitAdvice, buyAlerts };
     });
 
     return { totalValue, totalTarget, assets };
@@ -1552,23 +1601,27 @@ function updateSummary(totalValue, totalTarget, assets) {
     const rebalanceBuys = [], dipBuys = [], sells = [], takeProfits = [];
     let totalBuy = 0, totalSell = 0;
 
-    assets.forEach(({ asset, diff, profitPct, profitAdvice, cost, buyAlerts }) => {
-        if (diff < -0.01) { sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}`); totalSell += Math.abs(diff); }
+    assets.forEach(({ asset, diff, profitPct, profitAdvice, buyAlerts }) => {
+        if (diff < -0.01) {
+            sells.push(`${asset.name} $${fmt(Math.abs(diff), 0)}${formatShareAdvice(Math.abs(diff), asset)}`);
+            totalSell += Math.abs(diff);
+        }
 
         buyAlerts.forEach(alert => {
             if (alert.type === 'rebalance') {
-                rebalanceBuys.push(`${asset.name} $${fmt(alert.amount, 0)}`);
+                rebalanceBuys.push(`${asset.name} $${fmt(alert.amount, 0)}${formatShareAdvice(alert.amount, asset)}`);
                 totalBuy += alert.amount;
             } else if (alert.type === 'dip') {
-                dipBuys.push(`${asset.name} −${alert.dropFromPeak.toFixed(0)}% → $${fmt(alert.amount, 0)}`);
+                dipBuys.push(`${asset.name} −${alert.dropFromPeak.toFixed(0)}% → $${fmt(alert.amount, 0)}${formatShareAdvice(alert.amount, asset)}`);
             }
         });
 
         if (showProfitTaking() && profitAdvice) {
+            const sharePart = formatShareAdvice(profitAdvice.sellAmount, asset);
             if (profitAdvice.type === 'trailing') {
-                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)}`);
+                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)}${sharePart}`);
             } else {
-                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)} (+${profitPct.toFixed(0)}%)`);
+                takeProfits.push(`${asset.name} ${profitAdvice.text} · $${fmt(profitAdvice.sellAmount, 0)}${sharePart} (+${profitPct.toFixed(0)}%)`);
             }
         }
     });
@@ -1877,17 +1930,23 @@ function updateAsset(index, field, val) {
 
 function deleteAssetFromSheet(index) {
     if (!confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) return;
+    const name = myPortfolio[index].name;
     closeAssetSheet();
+    markAssetDeleted(name);
     myPortfolio.splice(index, 1);
     persistPortfolio();
+    flushCloudSave();
     renderAndCalculate();
 }
 
 function deleteAsset(index) {
     if (confirm(`ลบ ${myPortfolio[index].name} ออกจากพอร์ต?`)) {
+        const name = myPortfolio[index].name;
         if (assetSheetIndex === index) closeAssetSheet();
+        markAssetDeleted(name);
         myPortfolio.splice(index, 1);
         persistPortfolio();
+        flushCloudSave();
         renderAndCalculate();
     }
 }
@@ -1908,6 +1967,7 @@ function addAsset() {
     if (!name) return;
     const group = activeTab;
     const kind = GROUPS[group]?.kind || inferKind(name);
+    unmarkAssetDeleted(name);
     myPortfolio.push({
         name, kind, group,
         shares: 0, avgCost: 0, target: 0,
