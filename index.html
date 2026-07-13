@@ -478,35 +478,57 @@
             font-weight: 700;
             font-size: 15px;
         }
-        .group-allocation-rows { padding: 10px 10px 4px; }
+        .group-allocation-rows { padding: 8px 8px 4px; }
+        .group-allocation-cols,
         .group-allocation-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 58px 40px 64px auto 24px;
+            grid-template-columns: minmax(0, 1fr) 66px 34px 56px 12px 22px;
             align-items: center;
-            gap: 5px;
-            margin-bottom: 8px;
+            gap: 4px;
+        }
+        .group-allocation-cols {
+            padding: 0 0 4px;
+            margin-bottom: 2px;
+        }
+        .group-col-head {
+            font-size: 9px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .group-col-head.col-name {
+            text-align: left;
+            padding-left: 6px;
+        }
+        .group-col-head.col-pct {
+            grid-column: 4;
+        }
+        .group-allocation-row {
+            margin-bottom: 6px;
         }
         .group-allocation-row:last-child { margin-bottom: 0; }
         .group-name-input {
             width: 100%;
             min-width: 0;
-            padding: 8px 10px;
+            padding: 6px 8px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             background: #fff;
             box-sizing: border-box;
         }
         .group-kind-select {
-            width: 58px;
-            max-width: 58px;
-            padding: 7px 2px;
+            width: 66px;
+            max-width: 66px;
+            padding: 5px 1px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             text-align: center;
+            text-align-last: center;
             background: #fff;
             box-sizing: border-box;
             cursor: pointer;
@@ -514,12 +536,12 @@
             appearance: none;
         }
         .group-pct-input {
-            width: 64px;
-            max-width: 64px;
-            padding: 8px 6px;
+            width: 56px;
+            max-width: 56px;
+            padding: 6px 4px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
             text-align: center;
             background: #fff;
@@ -528,7 +550,7 @@
             appearance: none;
         }
         .group-pct-suffix {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--muted);
             flex-shrink: 0;
@@ -542,8 +564,8 @@
         .toggle-switch {
             position: relative;
             display: inline-block;
-            width: 40px;
-            height: 22px;
+            width: 34px;
+            height: 18px;
             flex-shrink: 0;
         }
         .toggle-switch input {
@@ -563,36 +585,36 @@
         .toggle-slider::before {
             content: '';
             position: absolute;
-            height: 18px;
-            width: 18px;
+            height: 14px;
+            width: 14px;
             left: 2px;
             bottom: 2px;
             background: #fff;
             border-radius: 50%;
             transition: transform 0.2s;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
         }
         .toggle-switch input:checked + .toggle-slider {
             background: var(--green);
         }
         .toggle-switch input:checked + .toggle-slider::before {
-            transform: translateX(18px);
+            transform: translateX(16px);
         }
         .group-profit-off {
-            font-size: 14px;
+            font-size: 12px;
             color: #cbd5e0;
             text-align: center;
-            width: 40px;
+            width: 34px;
             flex-shrink: 0;
         }
         .btn-delete-group {
-            width: 28px;
-            height: 28px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
             border: none;
             background: transparent;
             color: var(--red);
-            font-size: 17px;
+            font-size: 15px;
             line-height: 1;
             cursor: pointer;
             flex-shrink: 0;
@@ -1680,7 +1702,14 @@ function renderGroupAllocationSettings() {
     const el = document.getElementById('group-allocation-rows');
     if (!el) return;
     const canDelete = portfolioGroups.length > 1;
-    el.innerHTML = portfolioGroups.map(g => {
+    el.innerHTML = `<div class="group-allocation-cols">
+            <span class="group-col-head col-name">ชื่อกลุ่ม</span>
+            <span class="group-col-head">ประเภท</span>
+            <span class="group-col-head" title="เปิดขายทำกำไร 3 ส่วน">กำไร</span>
+            <span class="group-col-head col-pct">%</span>
+            <span class="group-col-head"></span>
+            <span class="group-col-head"></span>
+        </div>` + portfolioGroups.map(g => {
         const val = getTargetByGroup(g.id);
         const del = canDelete
             ? `<button type="button" class="btn-delete-group" aria-label="ลบกลุ่ม" onclick="deletePortfolioGroup('${g.id}')">✕</button>`
