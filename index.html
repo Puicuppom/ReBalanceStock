@@ -482,16 +482,16 @@
         .group-allocation-cols,
         .group-allocation-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 66px 34px 56px 12px 22px;
+            grid-template-columns: 16px minmax(0, 1fr) 58px 32px 50px 10px 20px;
             align-items: center;
-            gap: 4px;
+            gap: 3px;
         }
         .group-allocation-cols {
-            padding: 0 0 4px;
+            padding: 0 0 3px;
             margin-bottom: 2px;
         }
         .group-col-head {
-            font-size: 9px;
+            font-size: 8px;
             font-weight: 700;
             color: #94a3b8;
             text-align: center;
@@ -499,33 +499,58 @@
         }
         .group-col-head.col-name {
             text-align: left;
-            padding-left: 6px;
+            padding-left: 2px;
+            grid-column: 2;
         }
         .group-col-head.col-pct {
-            grid-column: 4;
+            grid-column: 5;
         }
+        .group-allocation-list.drag-active { touch-action: none; }
         .group-allocation-row {
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
         .group-allocation-row:last-child { margin-bottom: 0; }
+        .group-allocation-row.drag-float {
+            position: fixed;
+            z-index: 300;
+            margin: 0;
+            background: #fff;
+            border-radius: 999px;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+            opacity: 0.97;
+            pointer-events: none;
+        }
+        .group-drag-handle {
+            border: none;
+            background: transparent;
+            color: #a0aec0;
+            font-size: 12px;
+            line-height: 1;
+            padding: 0;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+            opacity: 0.7;
+        }
+        .group-drag-handle:active { cursor: grabbing; opacity: 1; }
         .group-name-input {
             width: 100%;
             min-width: 0;
-            padding: 6px 8px;
+            padding: 5px 6px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             background: #fff;
             box-sizing: border-box;
         }
         .group-kind-select {
-            width: 66px;
-            max-width: 66px;
-            padding: 5px 1px;
+            width: 58px;
+            max-width: 58px;
+            padding: 4px 0;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             text-align: center;
             text-align-last: center;
@@ -536,12 +561,12 @@
             appearance: none;
         }
         .group-pct-input {
-            width: 56px;
-            max-width: 56px;
-            padding: 6px 4px;
+            width: 50px;
+            max-width: 50px;
+            padding: 5px 2px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             text-align: center;
             background: #fff;
@@ -550,7 +575,7 @@
             appearance: none;
         }
         .group-pct-suffix {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             color: var(--muted);
             flex-shrink: 0;
@@ -564,8 +589,8 @@
         .toggle-switch {
             position: relative;
             display: inline-block;
-            width: 34px;
-            height: 18px;
+            width: 30px;
+            height: 16px;
             flex-shrink: 0;
         }
         .toggle-switch input {
@@ -585,8 +610,8 @@
         .toggle-slider::before {
             content: '';
             position: absolute;
-            height: 14px;
-            width: 14px;
+            height: 12px;
+            width: 12px;
             left: 2px;
             bottom: 2px;
             background: #fff;
@@ -598,32 +623,39 @@
             background: var(--green);
         }
         .toggle-switch input:checked + .toggle-slider::before {
-            transform: translateX(16px);
+            transform: translateX(14px);
         }
         .group-profit-off {
-            font-size: 12px;
+            font-size: 11px;
             color: #cbd5e0;
             text-align: center;
-            width: 34px;
+            width: 30px;
             flex-shrink: 0;
         }
         .btn-delete-group {
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             border: none;
             background: transparent;
             color: var(--red);
-            font-size: 15px;
+            font-size: 14px;
             line-height: 1;
             cursor: pointer;
             flex-shrink: 0;
         }
         .group-allocation-sum {
             text-align: center;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             padding: 6px 10px 8px;
+        }
+        .group-drag-placeholder {
+            background: #ebf8ff;
+            border: 2px dashed var(--accent);
+            border-radius: 999px;
+            margin-bottom: 5px;
+            height: 32px;
         }
         .group-allocation-foot {
             padding: 10px 12px 12px;
@@ -1703,13 +1735,15 @@ function renderGroupAllocationSettings() {
     if (!el) return;
     const canDelete = portfolioGroups.length > 1;
     el.innerHTML = `<div class="group-allocation-cols">
+            <span class="group-col-head col-drag">≡</span>
             <span class="group-col-head col-name">ชื่อกลุ่ม</span>
             <span class="group-col-head">ประเภท</span>
             <span class="group-col-head" title="เปิดขายทำกำไร 3 ส่วน">กำไร</span>
             <span class="group-col-head col-pct">%</span>
             <span class="group-col-head"></span>
             <span class="group-col-head"></span>
-        </div>` + portfolioGroups.map(g => {
+        </div>
+        <div class="group-allocation-list" id="group-allocation-list">` + portfolioGroups.map(g => {
         const val = getTargetByGroup(g.id);
         const del = canDelete
             ? `<button type="button" class="btn-delete-group" aria-label="ลบกลุ่ม" onclick="deletePortfolioGroup('${g.id}')">✕</button>`
@@ -1720,12 +1754,13 @@ function renderGroupAllocationSettings() {
                 <input type="checkbox"${g.profitTaking ? ' checked' : ''} onchange="updateGroupProfitTaking('${g.id}', this.checked)">
                 <span class="toggle-slider"></span>
                </label>`;
-        const kindSelect = `<select class="group-kind-select" onchange="updateGroupKind('${g.id}', this.value)" aria-label="ประเภทกลุ่ม">
+        const kindSelect = `<select class="group-kind-select" onchange="updateGroupKind('${g.id}', this.value)" aria-label="ประเภทกลุ่ม" title="ประเภทกลุ่ม">
             <option value="stock"${g.kind === 'stock' ? ' selected' : ''}>หุ้น</option>
             <option value="etf"${g.kind === 'etf' ? ' selected' : ''}>ETF</option>
-            <option value="cash"${g.kind === 'cash' ? ' selected' : ''}>เงินสด</option>
+            <option value="cash"${g.kind === 'cash' ? ' selected' : ''}>สด</option>
         </select>`;
         return `<div class="group-allocation-row" data-group-id="${g.id}">
+            <button type="button" class="group-drag-handle" aria-label="สลับลำดับ ${getGroupLabel(g.id)}">≡</button>
             <input class="group-name-input" type="text" value="${getGroupLabel(g.id)}"
                 oninput="updateGroupName('${g.id}', this.value)">
             ${kindSelect}
@@ -1735,7 +1770,7 @@ function renderGroupAllocationSettings() {
             <span class="group-pct-suffix">%</span>
             ${del}
         </div>`;
-    }).join('');
+    }).join('') + '</div>';
     updateGroupTargetSum();
     updateProfitGroupsMeta();
 }
@@ -2789,6 +2824,119 @@ function onDragEnd() {
     list.addEventListener('contextmenu', e => {
         if (e.target.closest('.drag-handle')) e.preventDefault();
     });
+})();
+
+/* Drag to reorder groups (≡ in settings) */
+let groupDrag = null;
+
+function activateGroupDrag(point) {
+    if (!groupDrag || groupDrag.active) return;
+    const { card, list } = groupDrag;
+    const rect = card.getBoundingClientRect();
+    groupDrag.active = true;
+    groupDrag.placeholder = document.createElement('div');
+    groupDrag.placeholder.className = 'group-drag-placeholder';
+    groupDrag.placeholder.style.height = rect.height + 'px';
+    list.insertBefore(groupDrag.placeholder, card);
+    card.classList.add('drag-float');
+    card.style.width = rect.width + 'px';
+    card.style.left = rect.left + 'px';
+    card.style.top = (point.clientY - groupDrag.offsetY) + 'px';
+    list.classList.add('drag-active');
+    document.body.classList.add('drag-active');
+    if (navigator.vibrate) navigator.vibrate(15);
+}
+
+function moveGroupPlaceholder(clientY) {
+    const rows = [...groupDrag.list.querySelectorAll('.group-allocation-row')];
+    for (const row of rows) {
+        if (row === groupDrag.card) continue;
+        const rect = row.getBoundingClientRect();
+        if (clientY < rect.top + rect.height / 2) {
+            groupDrag.list.insertBefore(groupDrag.placeholder, row);
+            return;
+        }
+    }
+    groupDrag.list.appendChild(groupDrag.placeholder);
+}
+
+function finishGroupDrag() {
+    if (!groupDrag.active) return;
+    const { card, list, placeholder } = groupDrag;
+    list.insertBefore(card, placeholder);
+    placeholder.remove();
+    card.classList.remove('drag-float');
+    card.removeAttribute('style');
+    list.classList.remove('drag-active');
+    document.body.classList.remove('drag-active');
+    const rows = [...list.querySelectorAll('.group-allocation-row')];
+    portfolioGroups = rows.map(r => getGroupMeta(r.dataset.groupId)).filter(Boolean);
+    savePortfolioGroups();
+    sortPortfolioByGroup();
+    persistPortfolio();
+    rebuildTabBar();
+    const { totalValue, totalTarget } = computePortfolio();
+    updateSummary(totalValue, totalTarget);
+    renderAndCalculate();
+    flushCloudSave();
+}
+
+function onGroupDragStart(e) {
+    if (groupDrag || drag) return;
+    const handle = e.target.closest('.group-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.group-allocation-row');
+    const list = document.getElementById('group-allocation-list');
+    if (!row || !list) return;
+    const point = getPoint(e);
+    if (e.type === 'mousedown') e.preventDefault();
+    groupDrag = {
+        card: row,
+        list,
+        startX: point.clientX,
+        startY: point.clientY,
+        offsetY: point.clientY - row.getBoundingClientRect().top,
+        timer: setTimeout(() => {
+            if (groupDrag && !groupDrag.active) {
+                activateGroupDrag({ clientX: groupDrag.startX, clientY: groupDrag.startY });
+            }
+        }, DRAG_PRESS_MS),
+        active: false
+    };
+}
+
+function onGroupDragMove(e) {
+    if (!groupDrag) return;
+    const point = getPoint(e);
+    if (!groupDrag.active) {
+        const dy = Math.abs(point.clientY - groupDrag.startY);
+        const dx = Math.abs(point.clientX - groupDrag.startX);
+        if (dy >= DRAG_MOVE_PX && dy > dx) {
+            clearTimeout(groupDrag.timer);
+            activateGroupDrag(point);
+        }
+        return;
+    }
+    e.preventDefault();
+    groupDrag.card.style.top = (point.clientY - groupDrag.offsetY) + 'px';
+    moveGroupPlaceholder(point.clientY);
+}
+
+function onGroupDragEnd() {
+    if (!groupDrag) return;
+    clearTimeout(groupDrag.timer);
+    if (groupDrag.active) finishGroupDrag();
+    groupDrag = null;
+}
+
+(function initGroupDragSort() {
+    document.addEventListener('touchstart', onGroupDragStart, { passive: false });
+    document.addEventListener('mousedown', onGroupDragStart);
+    document.addEventListener('touchmove', onGroupDragMove, { passive: false });
+    document.addEventListener('mousemove', onGroupDragMove);
+    document.addEventListener('touchend', onGroupDragEnd);
+    document.addEventListener('touchcancel', onGroupDragEnd);
+    document.addEventListener('mouseup', onGroupDragEnd);
 })();
 
 /* PWA */
