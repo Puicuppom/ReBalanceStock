@@ -481,7 +481,7 @@
         .group-allocation-rows { padding: 10px 10px 4px; }
         .group-allocation-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 68px auto 28px;
+            grid-template-columns: minmax(0, 1fr) auto 68px auto 28px;
             align-items: center;
             gap: 6px;
             margin-bottom: 8px;
@@ -517,6 +517,30 @@
             font-weight: 600;
             color: var(--muted);
             flex-shrink: 0;
+        }
+        .group-profit-toggle {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--muted);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        .group-profit-toggle input {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .group-profit-off {
+            font-size: 10px;
+            color: #cbd5e0;
+            text-align: center;
+            width: 36px;
         }
         .btn-delete-group {
             width: 28px;
@@ -997,13 +1021,14 @@
                     </div>
                 </div>
             </div>
-            <div class="settings-section hidden" id="profit-settings-section">
+            <div class="settings-section" id="profit-settings-section">
                 <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('profit-panel')">
                     <span class="settings-toggle-text">ขายทำกำไร 3 ส่วน</span>
-                    <span class="settings-toggle-meta">Growth / Alpha</span>
+                    <span class="settings-toggle-meta" id="profit-groups-meta">—</span>
                     <span class="settings-chevron">▼</span>
                 </button>
                 <div class="settings-panel hidden" id="profit-panel">
+                    <div class="setting-hint">ใช้กับกลุ่มที่ติ๊ก <b>กำไร</b> ใน「สัดส่วนกลุ่ม」· กลุ่มเงินสดไม่มีสัญญาณทำกำไร</div>
                     <div class="setting-hint">+15% แนะนำขาย 30% · +25% แนะนำขาย 60% · ร่วงจากสูงสุด Trailing ขายส่วนที่เหลือ</div>
                     <div class="tier-grid" id="tier-settings"></div>
                 </div>
@@ -1041,17 +1066,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const SYNC_KEY = 'rebalance-puicuppom-v1';
 
 const DEFAULT_PORTFOLIO_GROUPS = [
-    { id: 'income', name: 'ปันผล', hint: 'Income · ปันผล Reinvest ซ่อมพอร์ต', kind: 'etf' },
-    { id: 'growth', name: 'เติบโต', hint: 'Tech Growth · เสาหลักหุ้นรายตัว', kind: 'stock' },
-    { id: 'alpha', name: 'Alpha', hint: 'Growth / Tactical · จับจังหวะตามแนวรับ', kind: 'stock' },
-    { id: 'cash', name: 'เงินสด', hint: 'Cash · สำรองและรอลงทุน', kind: 'cash' }
+    { id: 'income', name: 'ปันผล', hint: 'Income · ปันผล Reinvest ซ่อมพอร์ต', kind: 'etf', profitTaking: false },
+    { id: 'growth', name: 'เติบโต', hint: 'Tech Growth · เสาหลักหุ้นรายตัว', kind: 'stock', profitTaking: true },
+    { id: 'alpha', name: 'Alpha', hint: 'Growth / Tactical · จับจังหวะตามแนวรับ', kind: 'stock', profitTaking: true },
+    { id: 'cash', name: 'เงินสด', hint: 'Cash · สำรองและรอลงทุน', kind: 'cash', profitTaking: false }
 ];
+
+function normalizePortfolioGroup(g) {
+    const kind = g.kind || 'stock';
+    const profitTaking = kind === 'cash' ? false : (g.profitTaking ?? (kind === 'stock'));
+    return { ...g, kind, profitTaking };
+}
 
 function loadPortfolioGroups() {
     const saved = JSON.parse(localStorage.getItem('portfolioGroups') || 'null');
-    if (Array.isArray(saved) && saved.length) return saved;
+    if (Array.isArray(saved) && saved.length) {
+        return saved.map(normalizePortfolioGroup);
+    }
     const legacy = JSON.parse(localStorage.getItem('groupConfig') || 'null');
-    return DEFAULT_PORTFOLIO_GROUPS.map(g => ({
+    return DEFAULT_PORTFOLIO_GROUPS.map(g => normalizePortfolioGroup({
         ...g,
         name: legacy?.labels?.[g.id] || g.name,
         hint: legacy?.hints?.[g.id] || g.hint
@@ -1083,6 +1116,11 @@ function getGroupHint(id) {
 
 function isCashGroup(id) {
     return getGroupMeta(id)?.kind === 'cash';
+}
+
+function groupUsesProfitTaking(groupId) {
+    if (isCashGroup(groupId)) return false;
+    return getGroupMeta(groupId)?.profitTaking === true;
 }
 
 function getCashGroupId() {
@@ -1341,7 +1379,7 @@ function normalizePortfolioList(list, skipMigration = false) {
 function applyCloudData(cloud) {
     if (!cloud) return;
     if (Array.isArray(cloud.portfolioGroups) && cloud.portfolioGroups.length) {
-        portfolioGroups = cloud.portfolioGroups;
+        portfolioGroups = cloud.portfolioGroups.map(normalizePortfolioGroup);
         localStorage.setItem('portfolioGroups', JSON.stringify(portfolioGroups));
     } else if (cloud.groupConfig) {
         portfolioGroups.forEach(g => {
@@ -1526,7 +1564,14 @@ function loadActiveTab() {
 let activeTab = loadActiveTab();
 
 function showProfitTaking() {
-    return getGroupMeta(activeTab)?.kind === 'stock';
+    return groupUsesProfitTaking(activeTab);
+}
+
+function updateProfitGroupsMeta() {
+    const el = document.getElementById('profit-groups-meta');
+    if (!el) return;
+    const names = portfolioGroups.filter(g => groupUsesProfitTaking(g.id)).map(g => getGroupLabel(g.id));
+    el.textContent = names.length ? names.join(', ') : 'ยังไม่ได้เลือกกลุ่ม';
 }
 
 function setTab(tab) {
@@ -1575,9 +1620,16 @@ function renderGroupAllocationSettings() {
         const del = canDelete
             ? `<button type="button" class="btn-delete-group" aria-label="ลบกลุ่ม" onclick="deletePortfolioGroup('${g.id}')">✕</button>`
             : '';
+        const profitCtrl = isCashGroup(g.id)
+            ? `<span class="group-profit-off" title="เงินสด — ไม่ใช้ขายทำกำไร">—</span>`
+            : `<label class="group-profit-toggle" title="เปิดขายทำกำไร 3 ส่วน">
+                <input type="checkbox"${g.profitTaking ? ' checked' : ''} onchange="updateGroupProfitTaking('${g.id}', this.checked)">
+                <span>กำไร</span>
+               </label>`;
         return `<div class="group-allocation-row" data-group-id="${g.id}">
             <input class="group-name-input" type="text" value="${getGroupLabel(g.id)}"
                 oninput="updateGroupName('${g.id}', this.value)">
+            ${profitCtrl}
             <input class="group-pct-input" type="text" inputmode="decimal" value="${formatInputVal(val)}"
                 oninput="updateGroupTarget('${g.id}', this.value)">
             <span class="group-pct-suffix">%</span>
@@ -1585,6 +1637,16 @@ function renderGroupAllocationSettings() {
         </div>`;
     }).join('');
     updateGroupTargetSum();
+    updateProfitGroupsMeta();
+}
+
+function updateGroupProfitTaking(id, enabled) {
+    const g = getGroupMeta(id);
+    if (!g || isCashGroup(id)) return;
+    g.profitTaking = enabled;
+    savePortfolioGroups();
+    updateProfitGroupsMeta();
+    if (activeTab === id) scheduleRecalculate();
 }
 
 function updateGroupName(id, val) {
@@ -1603,7 +1665,7 @@ function updateGroupName(id, val) {
 
 function addPortfolioGroup() {
     const id = 'g' + Date.now().toString(36);
-    portfolioGroups.push({ id, name: 'กลุ่มใหม่', hint: '', kind: 'stock', targetPct: 0 });
+    portfolioGroups.push(normalizePortfolioGroup({ id, name: 'กลุ่มใหม่', hint: '', kind: 'stock', targetPct: 0, profitTaking: false }));
     savePortfolioGroups();
     renderGroupAllocationSettings();
     rebuildTabBar();
@@ -1689,8 +1751,9 @@ function updateGroupTarget(group, val) {
 }
 
 function openSettingsSheet() {
-    document.getElementById('profit-settings-section').classList.toggle('hidden', !showProfitTaking());
     renderGroupAllocationSettings();
+    renderTierSettings();
+    updateProfitGroupsMeta();
     document.getElementById('settings-overlay').classList.add('open');
 }
 
@@ -1796,7 +1859,7 @@ function updatePeakValues() {
 }
 
 function getProfitAdvice(asset, profitPct, cost) {
-    if (!cost || cost <= 0 || getGroupMeta(getAssetGroup(asset))?.kind === 'etf' || isCashAsset(asset)) return null;
+    if (!cost || cost <= 0 || !groupUsesProfitTaking(getAssetGroup(asset)) || isCashAsset(asset)) return null;
 
     const t1 = profitTiers[0];
     const t2 = profitTiers[1];
@@ -1932,6 +1995,12 @@ function getTradeSignal(asset, diff, ideal) {
             return { text: 'ลด', sub: formatTradeAmount(Math.abs(diff), asset), cls: 'sell' };
         }
         return { text: 'พอดี', sub: '', cls: 'hold' };
+    }
+    const cost = asset.cost || 0;
+    const profitPct = cost > 0 ? ((asset.value - cost) / cost) * 100 : 0;
+    const profitAdvice = getProfitAdvice(asset, profitPct, cost);
+    if (profitAdvice) {
+        return { text: profitAdvice.text, sub: profitAdvice.sub, cls: 'sell' };
     }
     const fv = getStockData(asset.name).fairValue;
     const price = getPrice(asset.name) || asset.price || 0;
