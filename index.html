@@ -481,16 +481,16 @@
         .group-allocation-rows { padding: 10px 10px 4px; }
         .group-allocation-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 40px 68px auto 28px;
+            grid-template-columns: minmax(0, 1fr) 58px 40px 64px auto 24px;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
             margin-bottom: 8px;
         }
         .group-allocation-row:last-child { margin-bottom: 0; }
         .group-name-input {
             width: 100%;
             min-width: 0;
-            padding: 8px 12px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
             border-radius: 999px;
             font-size: 13px;
@@ -498,9 +498,24 @@
             background: #fff;
             box-sizing: border-box;
         }
+        .group-kind-select {
+            width: 58px;
+            max-width: 58px;
+            padding: 7px 2px;
+            border: 1px solid #ddd;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            background: #fff;
+            box-sizing: border-box;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+        }
         .group-pct-input {
-            width: 68px;
-            max-width: 68px;
+            width: 64px;
+            max-width: 64px;
             padding: 8px 6px;
             border: 1px solid #ddd;
             border-radius: 999px;
@@ -1190,7 +1205,19 @@ const CASH_SYMBOLS = new Set(['USD', 'CASH', 'เงินสด']);
 
 function inferKind(name, group) {
     if (isCashGroup(group)) return 'cash';
+    const metaKind = getGroupMeta(group)?.kind;
+    if (metaKind === 'etf') return 'etf';
+    if (metaKind === 'stock') {
+        return ETF_SYMBOLS.has(String(name).toUpperCase()) ? 'etf' : 'stock';
+    }
     return ETF_SYMBOLS.has(String(name).toUpperCase()) ? 'etf' : 'stock';
+}
+
+function resolveAssetGroup(asset) {
+    const g = asset.group || inferGroup(asset.name, asset.kind);
+    if (isCashAsset(asset) && isCashGroup(g)) return g;
+    if (isCashAsset(asset)) return getCashGroupId();
+    return g;
 }
 
 function inferGroup(name, kind) {
@@ -1242,7 +1269,7 @@ function applyStrategyMigration(list) {
     list.forEach(a => {
         if (a.kind === 'cash' || a.group === 'cash' || isCashGroup(a.group)) {
             a.kind = 'cash';
-            a.group = getCashGroupId();
+            a.group = isCashGroup(a.group) ? a.group : getCashGroupId();
             a.avgCost = 1;
             return;
         }
@@ -1281,7 +1308,7 @@ myPortfolio = myPortfolio.map(a => {
     const item = {
         name: a.name,
         kind,
-        group: kind === 'cash' ? getCashGroupId() : group,
+        group: isCashGroup(group) ? group : group,
         shares: a.shares ?? 0,
         avgCost: kind === 'cash' ? 1 : (a.avgCost ?? 0),
         target: a.target ?? 0,
@@ -1404,7 +1431,7 @@ function normalizePortfolioList(list, skipMigration = false) {
         return {
             name: a.name,
             kind,
-            group: kind === 'cash' ? getCashGroupId() : group,
+            group: isCashGroup(group) ? group : group,
             shares: a.shares ?? 0,
             avgCost: kind === 'cash' ? 1 : (a.avgCost ?? 0),
             target: a.target ?? 0,
@@ -1461,7 +1488,7 @@ function getCloudPayload() {
         portfolio: myPortfolio.map(a => ({
             name: a.name,
             kind: a.kind || inferKind(a.name, a.group),
-            group: isCashAsset(a) ? getCashGroupId() : (a.group || inferGroup(a.name, a.kind)),
+            group: resolveAssetGroup(a),
             shares: a.shares || 0,
             avgCost: a.avgCost || 0,
             target: a.target || 0,
@@ -1664,9 +1691,15 @@ function renderGroupAllocationSettings() {
                 <input type="checkbox"${g.profitTaking ? ' checked' : ''} onchange="updateGroupProfitTaking('${g.id}', this.checked)">
                 <span class="toggle-slider"></span>
                </label>`;
+        const kindSelect = `<select class="group-kind-select" onchange="updateGroupKind('${g.id}', this.value)" aria-label="ประเภทกลุ่ม">
+            <option value="stock"${g.kind === 'stock' ? ' selected' : ''}>หุ้น</option>
+            <option value="etf"${g.kind === 'etf' ? ' selected' : ''}>ETF</option>
+            <option value="cash"${g.kind === 'cash' ? ' selected' : ''}>เงินสด</option>
+        </select>`;
         return `<div class="group-allocation-row" data-group-id="${g.id}">
             <input class="group-name-input" type="text" value="${getGroupLabel(g.id)}"
                 oninput="updateGroupName('${g.id}', this.value)">
+            ${kindSelect}
             ${profitCtrl}
             <input class="group-pct-input" type="text" inputmode="decimal" value="${formatInputVal(val)}"
                 oninput="updateGroupTarget('${g.id}', this.value)">
@@ -1685,6 +1718,32 @@ function updateGroupProfitTaking(id, enabled) {
     savePortfolioGroups();
     updateProfitGroupsMeta();
     if (activeTab === id) scheduleRecalculate();
+}
+
+function updateGroupKind(id, kind) {
+    const g = getGroupMeta(id);
+    if (!g || !['stock', 'etf', 'cash'].includes(kind)) return;
+    const wasCash = g.kind === 'cash';
+    g.kind = kind;
+    if (kind === 'cash') g.profitTaking = false;
+    myPortfolio.filter(a => getAssetGroup(a) === id).forEach(a => {
+        if (kind === 'cash') {
+            a.kind = 'cash';
+            a.avgCost = 1;
+        } else if (wasCash || a.kind === 'cash') {
+            a.kind = inferKind(a.name, id);
+            if (a.avgCost === 1) a.avgCost = 0;
+        } else {
+            a.kind = inferKind(a.name, id);
+        }
+    });
+    savePortfolioGroups();
+    persistPortfolio();
+    renderGroupAllocationSettings();
+    rebuildTabBar();
+    updateTabUI();
+    renderAndCalculate();
+    scheduleCloudSave();
 }
 
 function updateGroupName(id, val) {
@@ -1859,7 +1918,7 @@ function persistPortfolio() {
     const data = myPortfolio.map(a => ({
         name: a.name,
         kind: a.kind || inferKind(a.name, a.group),
-        group: isCashAsset(a) ? getCashGroupId() : (a.group || inferGroup(a.name, a.kind)),
+        group: resolveAssetGroup(a),
         shares: a.shares || 0,
         avgCost: isCashAsset(a) ? 1 : (a.avgCost || 0),
         target: a.target || 0,
@@ -2557,7 +2616,7 @@ function addAsset() {
     const kind = isCashGroup(group) ? 'cash' : (getGroupMeta(group)?.kind || inferKind(name, group));
     unmarkAssetDeleted(name);
     myPortfolio.push({
-        name, kind, group: kind === 'cash' ? getCashGroupId() : group,
+        name, kind, group,
         shares: 0, avgCost: kind === 'cash' ? 1 : 0, target: 0,
         peakValue: 0, tiersDone: [false, false, false]
     });
