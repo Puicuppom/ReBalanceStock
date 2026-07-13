@@ -482,7 +482,7 @@
         .group-allocation-cols,
         .group-allocation-row {
             display: grid;
-            grid-template-columns: 16px minmax(0, 1fr) 58px 32px 50px 10px 20px;
+            grid-template-columns: 16px minmax(0, 1fr) 58px 32px 58px 10px 20px;
             align-items: center;
             gap: 3px;
         }
@@ -536,22 +536,24 @@
         .group-name-input {
             width: 100%;
             min-width: 0;
-            padding: 5px 6px;
+            padding: 4px 6px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 8px;
+            font-weight: 500;
+            line-height: 1.2;
             background: #fff;
             box-sizing: border-box;
         }
         .group-kind-select {
             width: 58px;
             max-width: 58px;
-            padding: 4px 0;
+            padding: 3px 0;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 9px;
-            font-weight: 700;
+            font-size: 8px;
+            font-weight: 600;
+            line-height: 1.2;
             text-align: center;
             text-align-last: center;
             background: #fff;
@@ -561,13 +563,14 @@
             appearance: none;
         }
         .group-pct-input {
-            width: 50px;
-            max-width: 50px;
-            padding: 5px 2px;
+            width: 58px;
+            max-width: 58px;
+            padding: 4px 2px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 8px;
+            font-weight: 600;
+            line-height: 1.2;
             text-align: center;
             background: #fff;
             box-sizing: border-box;
@@ -575,7 +578,7 @@
             appearance: none;
         }
         .group-pct-suffix {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: 600;
             color: var(--muted);
             flex-shrink: 0;
