@@ -480,31 +480,35 @@
         }
         .group-allocation-rows { padding: 10px 10px 4px; }
         .group-allocation-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 52px auto 30px;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             margin-bottom: 10px;
         }
         .group-allocation-row:last-child { margin-bottom: 0; }
         .group-name-input {
-            flex: 1;
+            width: 100%;
             min-width: 0;
-            padding: 11px 16px;
+            padding: 10px 14px;
             border: 1px solid #ddd;
             border-radius: 999px;
             font-size: 15px;
             font-weight: 600;
             background: #fff;
+            box-sizing: border-box;
         }
         .group-pct-input {
-            width: 54px;
-            padding: 11px 6px;
+            width: 52px;
+            max-width: 52px;
+            padding: 8px 4px;
             border: 1px solid #ddd;
             border-radius: 999px;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
             text-align: center;
             background: #fff;
+            box-sizing: border-box;
             -webkit-appearance: none;
             appearance: none;
         }
@@ -841,6 +845,7 @@
             flex: 1;
             min-height: 0;
             -webkit-overflow-scrolling: touch;
+            padding-bottom: 8px;
         }
         .settings-sheet .setting-input {
             padding: 8px 6px;
@@ -957,13 +962,13 @@
                     <div class="setting-hint">บันทึกอัตโนมัติทุกอุปกรณ์ — ไม่ต้องล็อกอิน</div>
                 </div>
             </div>
-            <div class="settings-section open" id="group-allocation-section">
+            <div class="settings-section" id="group-allocation-section">
                 <button type="button" class="settings-toggle" onclick="toggleSettingsPanel('group-panel')">
                     <span class="settings-toggle-text">สัดส่วนกลุ่ม</span>
                     <span class="settings-toggle-meta" id="group-targets-meta">—</span>
                     <span class="settings-chevron">▼</span>
                 </button>
-                <div class="settings-panel" id="group-panel">
+                <div class="settings-panel hidden" id="group-panel">
                     <div class="group-allocation-wrap">
                         <div class="group-allocation-head">สัดส่วนกลุ่ม</div>
                         <div class="group-allocation-rows" id="group-allocation-rows"></div>
@@ -1589,14 +1594,12 @@ function updateGroupName(id, val) {
     g.name = val;
     savePortfolioGroups();
     rebuildTabBar();
-    const { totalValue, totalTarget } = computePortfolio();
     const breakdownEl = document.getElementById('target-breakdown');
     if (breakdownEl) {
         breakdownEl.textContent = portfolioGroups
             .map(gr => `${getGroupLabel(gr.id)} ${fmtPct(getTargetByGroup(gr.id))}`)
             .join(' · ');
     }
-    updateSummary(totalValue, totalTarget);
 }
 
 function addPortfolioGroup() {
