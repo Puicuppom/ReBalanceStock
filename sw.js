@@ -1,4 +1,4 @@
-const CACHE = 'rebalance-v55';
+const CACHE = 'rebalance-v56';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
