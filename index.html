@@ -1387,8 +1387,10 @@ let priceCache = {};
 let priceFetching = false;
 
 let deletedAssets = JSON.parse(localStorage.getItem('deletedAssets') || '[]');
+let pendingPortfolioRepairSync = false;
 
 let myPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || defaultAssets;
+pendingPortfolioRepairSync = isPortfolioBroken(myPortfolio);
 myPortfolio = mergeDefaultPortfolio(myPortfolio);
 myPortfolio = applyStrategyMigration(myPortfolio);
 myPortfolio = myPortfolio.map(a => {
@@ -1565,14 +1567,23 @@ function repairPortfolioList(list) {
     return out;
 }
 
+function isPortfolioBroken(list) {
+    if (!Array.isArray(list) || !list.length) return false;
+    const validIds = new Set(portfolioGroups.map(g => g.id));
+    const seen = new Set();
+    for (const a of list) {
+        const key = String(a.name).toUpperCase();
+        if (seen.has(key)) return true;
+        seen.add(key);
+        const g = a.group || inferGroup(a.name, a.kind);
+        if (!validIds.has(g)) return true;
+    }
+    return false;
+}
+
 function applyPortfolioRepair() {
-    const before = JSON.stringify(myPortfolio);
     myPortfolio = repairPortfolioList(myPortfolio);
     sortPortfolioByGroup();
-    if (JSON.stringify(myPortfolio) !== before) {
-        persistPortfolio();
-        scheduleCloudSave();
-    }
 }
 
 function applyCloudData(cloud) {
@@ -1592,6 +1603,7 @@ function applyCloudData(cloud) {
         localStorage.setItem('deletedAssets', JSON.stringify(deletedAssets));
     }
     if (Array.isArray(cloud.portfolio)) {
+        if (isPortfolioBroken(cloud.portfolio)) pendingPortfolioRepairSync = true;
         myPortfolio = normalizePortfolioList(cloud.portfolio, true);
         sortPortfolioByGroup();
         localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio));
@@ -3045,6 +3057,11 @@ if ('serviceWorker' in navigator) {
 async function bootstrap() {
     await initCloudSync();
     applyPortfolioRepair();
+    if (pendingPortfolioRepairSync) {
+        persistPortfolio();
+        await flushCloudSave();
+        pendingPortfolioRepairSync = false;
+    }
     renderAndCalculate();
     fetchUsdThbRate();
     fetchPrices(true);
