@@ -482,12 +482,12 @@
         .group-allocation-cols,
         .group-allocation-row {
             display: grid;
-            grid-template-columns: 16px minmax(0, 1fr) 58px 32px 58px 10px 20px;
+            grid-template-columns: 18px minmax(0, 1fr) 56px 32px 68px 24px;
             align-items: center;
-            gap: 3px;
+            gap: 4px;
         }
         .group-allocation-cols {
-            padding: 0 0 3px;
+            padding: 0 0 4px;
             margin-bottom: 2px;
         }
         .group-col-head {
@@ -499,11 +499,11 @@
         }
         .group-col-head.col-name {
             text-align: left;
-            padding-left: 2px;
-            grid-column: 2;
+            padding-left: 4px;
         }
-        .group-col-head.col-pct {
-            grid-column: 5;
+        .group-col-head.col-drag,
+        .group-col-head.col-del {
+            visibility: hidden;
         }
         .group-allocation-list.drag-active { touch-action: none; }
         .group-allocation-row {
@@ -527,67 +527,85 @@
             font-size: 12px;
             line-height: 1;
             padding: 0;
+            width: 18px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: grab;
             user-select: none;
             touch-action: none;
             opacity: 0.7;
         }
         .group-drag-handle:active { cursor: grabbing; opacity: 1; }
+        .group-name-input,
+        .group-kind-select,
+        .group-pct-cell {
+            height: 28px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 999px;
+            background: #fff;
+        }
         .group-name-input {
             width: 100%;
             min-width: 0;
-            padding: 4px 6px;
-            border: 1px solid #ddd;
-            border-radius: 999px;
+            padding: 0 10px;
             font-size: 11px;
             font-weight: 500;
-            line-height: 1.2;
-            background: #fff;
-            box-sizing: border-box;
+            line-height: 26px;
         }
         .group-kind-select {
-            width: 58px;
-            max-width: 58px;
-            padding: 3px 0;
-            border: 1px solid #ddd;
-            border-radius: 999px;
+            width: 100%;
+            padding: 0 4px;
             font-size: 11px;
             font-weight: 600;
-            line-height: 1.2;
+            line-height: 26px;
             text-align: center;
             text-align-last: center;
-            background: #fff;
-            box-sizing: border-box;
             cursor: pointer;
             -webkit-appearance: none;
             appearance: none;
         }
+        .group-pct-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            padding: 0 8px;
+            min-width: 0;
+        }
         .group-pct-input {
-            width: 58px;
-            max-width: 58px;
-            padding: 4px 2px;
-            border: 1px solid #ddd;
-            border-radius: 999px;
-            font-size: 8px;
+            width: 100%;
+            min-width: 0;
+            flex: 1 1 auto;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            font-size: 11px;
             font-weight: 600;
-            line-height: 1.2;
-            text-align: center;
-            background: #fff;
+            line-height: 26px;
+            text-align: right;
+            background: transparent;
             box-sizing: border-box;
             -webkit-appearance: none;
             appearance: none;
         }
         .group-pct-suffix {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--muted);
             flex-shrink: 0;
+            line-height: 1;
         }
         .group-profit-toggle {
             display: flex;
             align-items: center;
             justify-content: center;
+            width: 32px;
+            height: 28px;
             flex-shrink: 0;
+            justify-self: center;
         }
         .toggle-switch {
             position: relative;
@@ -629,15 +647,19 @@
             transform: translateX(14px);
         }
         .group-profit-off {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 11px;
             color: #cbd5e0;
-            text-align: center;
-            width: 30px;
+            width: 32px;
+            height: 28px;
+            justify-self: center;
             flex-shrink: 0;
         }
         .btn-delete-group {
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
             border: none;
             background: transparent;
@@ -646,6 +668,11 @@
             line-height: 1;
             cursor: pointer;
             flex-shrink: 0;
+            justify-self: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
         }
         .group-allocation-sum {
             text-align: center;
@@ -658,7 +685,7 @@
             border: 2px dashed var(--accent);
             border-radius: 999px;
             margin-bottom: 5px;
-            height: 32px;
+            height: 28px;
         }
         .group-allocation-foot {
             padding: 10px 12px 12px;
@@ -1743,13 +1770,12 @@ function renderGroupAllocationSettings() {
     if (!el) return;
     const canDelete = portfolioGroups.length > 1;
     el.innerHTML = `<div class="group-allocation-cols">
-            <span class="group-col-head col-drag">≡</span>
+            <span class="group-col-head col-drag" aria-hidden="true">≡</span>
             <span class="group-col-head col-name">ชื่อกลุ่ม</span>
             <span class="group-col-head">ประเภท</span>
             <span class="group-col-head" title="เปิดขายทำกำไร 3 ส่วน">กำไร</span>
-            <span class="group-col-head col-pct">%</span>
-            <span class="group-col-head"></span>
-            <span class="group-col-head"></span>
+            <span class="group-col-head">%</span>
+            <span class="group-col-head col-del" aria-hidden="true"></span>
         </div>
         <div class="group-allocation-list" id="group-allocation-list">` + portfolioGroups.map(g => {
         const val = getTargetByGroup(g.id);
@@ -1773,9 +1799,11 @@ function renderGroupAllocationSettings() {
                 oninput="updateGroupName('${g.id}', this.value)">
             ${kindSelect}
             ${profitCtrl}
-            <input class="group-pct-input" type="text" inputmode="decimal" value="${formatInputVal(val)}"
-                oninput="updateGroupTarget('${g.id}', this.value)">
-            <span class="group-pct-suffix">%</span>
+            <div class="group-pct-cell">
+                <input class="group-pct-input" type="text" inputmode="decimal" value="${formatInputVal(val)}"
+                    oninput="updateGroupTarget('${g.id}', this.value)">
+                <span class="group-pct-suffix">%</span>
+            </div>
             ${del}
         </div>`;
     }).join('') + '</div>';
