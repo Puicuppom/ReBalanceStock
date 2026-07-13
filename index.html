@@ -1410,6 +1410,7 @@ myPortfolio = myPortfolio.map(a => {
     }
     return item;
 });
+myPortfolio = repairPortfolioList(myPortfolio);
 sortPortfolioByGroup();
 
 function getPrice(symbol) {
@@ -1514,7 +1515,7 @@ function normalizePortfolioList(list, skipMigration = false) {
     list = (list || []).filter(a => !removed.has(String(a.name).toUpperCase()));
     list = mergeDefaultPortfolio(list);
     if (!skipMigration) list = applyStrategyMigration(list);
-    return list.map(a => {
+    list = list.map(a => {
         const group = a.group || inferGroup(a.name, a.kind);
         const kind = a.kind || inferKind(a.name, group);
         return {
@@ -1528,6 +1529,50 @@ function normalizePortfolioList(list, skipMigration = false) {
             tiersDone: a.tiersDone || [false, false, false]
         };
     });
+    return repairPortfolioList(list);
+}
+
+function repairPortfolioList(list) {
+    const validIds = new Set(portfolioGroups.map(g => g.id));
+    const fallback = portfolioGroups.find(g => g.kind === 'stock')
+        || portfolioGroups.find(g => g.kind === 'etf')
+        || portfolioGroups[0];
+    const bySymbol = new Map();
+    for (const a of list) {
+        const key = String(a.name).toUpperCase();
+        if (!bySymbol.has(key)) bySymbol.set(key, []);
+        bySymbol.get(key).push(a);
+    }
+    const out = [];
+    for (const assets of bySymbol.values()) {
+        const pick = assets.length === 1
+            ? assets[0]
+            : (assets.find(a => validIds.has(a.group || inferGroup(a.name, a.kind))) || assets[0]);
+        const group = pick.group || inferGroup(pick.name, pick.kind);
+        if (validIds.has(group)) {
+            out.push({ ...pick, group });
+            continue;
+        }
+        const newGroup = fallback?.id || getCashGroupId();
+        const kind = isCashGroup(newGroup) ? 'cash' : inferKind(pick.name, newGroup);
+        out.push({
+            ...pick,
+            group: newGroup,
+            kind,
+            avgCost: kind === 'cash' ? 1 : (pick.avgCost || 0)
+        });
+    }
+    return out;
+}
+
+function applyPortfolioRepair() {
+    const before = JSON.stringify(myPortfolio);
+    myPortfolio = repairPortfolioList(myPortfolio);
+    sortPortfolioByGroup();
+    if (JSON.stringify(myPortfolio) !== before) {
+        persistPortfolio();
+        scheduleCloudSave();
+    }
 }
 
 function applyCloudData(cloud) {
@@ -2999,6 +3044,7 @@ if ('serviceWorker' in navigator) {
 
 async function bootstrap() {
     await initCloudSync();
+    applyPortfolioRepair();
     renderAndCalculate();
     fetchUsdThbRate();
     fetchPrices(true);
