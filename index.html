@@ -1551,9 +1551,8 @@ function rebuildTabBar() {
 function updateTabUI() {
     rebuildTabBar();
     const squadPct = getTargetByGroup(activeTab);
-    const hint = getGroupHint(activeTab);
     document.getElementById('squad-note').textContent =
-        (hint ? `${hint} · ` : '') + `เป้าทัพนี้ ${fmtPct(squadPct)} · รวมทั้งพอร์ตต้องครบ 100.00%`;
+        `เป้าทัพนี้ ${fmtPct(squadPct)} · รวมทั้งพอร์ตต้องครบ 100.00%`;
     updateGroupTargetSum();
     const addInput = document.getElementById('new-asset-name');
     if (addInput) {
